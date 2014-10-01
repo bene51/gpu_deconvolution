@@ -25,8 +25,8 @@ typedef float2 fComplex;
 #else
 typedef struct
 {
-    float x;
-    float y;
+	float x;
+	float y;
 } fComplex;
 #endif
 
@@ -37,92 +37,92 @@ typedef struct
 //Round a / b to nearest higher integer value
 inline int iDivUp(int a, int b)
 {
-    return (a % b != 0) ? (a / b + 1) : (a / b);
+	return (a % b != 0) ? (a / b + 1) : (a / b);
 }
 
 //Align a to nearest higher multiple of b
 inline int iAlignUp(int a, int b)
 {
-    return (a % b != 0) ? (a - a % b + b) : a;
+	return (a % b != 0) ? (a - a % b + b) : a;
 }
 
 extern "C" void convolutionClampToBorderCPU(
-    float *h_Result,
-    float *h_Data,
-    float *h_Kernel,
-    int dataH,
-    int dataW,
-    int kernelH,
-    int kernelW,
-    int kernelY,
-    int kernelX
-);
+		float *h_Result,
+		float *h_Data,
+		float *h_Kernel,
+		int dataH,
+		int dataW,
+		int kernelH,
+		int kernelW,
+		int kernelY,
+		int kernelX
+		);
 
 extern "C" void padKernel(
-    float *d_PaddedKernel,
-    float *d_PaddedKernelHat,
-    float *d_Kernel,
-    int fftH,
-    int fftW,
-    int kernelH,
-    int kernelW,
-    int kernelY,
-    int kernelX,
-    cudaStream_t stream
-);
+		float *d_PaddedKernel,
+		float *d_PaddedKernelHat,
+		float *d_Kernel,
+		int fftH,
+		int fftW,
+		int kernelH,
+		int kernelW,
+		int kernelY,
+		int kernelX,
+		cudaStream_t stream
+		);
 
 extern "C" void padDataClampToBorder(
-    float *d_estimate,
-    float *d_PaddedData,
-    float *d_Data,
-    int fftH,
-    int fftW,
-    int dataH,
-    int dataW,
-    int kernelH,
-    int kernelW,
-    int kernelY,
-    int kernelX,
-    int nViews,
-    cudaStream_t stream
-);
+		float *d_estimate,
+		float *d_PaddedData,
+		float *d_Data,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		int kernelH,
+		int kernelW,
+		int kernelY,
+		int kernelX,
+		int nViews,
+		cudaStream_t stream
+		);
 
 extern "C" void unpadData(
-    float *d_Dst,
-    float *d_Src,
-    int fftH,
-    int fftW,
-    int dataH,
-    int dataW,
-    cudaStream_t stream
-);
+		float *d_Dst,
+		float *d_Src,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		cudaStream_t stream
+		);
 
 extern "C" void modulateAndNormalize(
-    fComplex *d_Dst,
-    fComplex *d_Src,
-    int fftH,
-    int fftW,
-    int padding,
-    cudaStream_t stream
-);
+		fComplex *d_Dst,
+		fComplex *d_Src,
+		int fftH,
+		int fftW,
+		int padding,
+		cudaStream_t stream
+		);
 
 extern "C" void divide(
-    float *d_a,
-    float *d_b,
-    float *d_dest,
-    int fftH,
-    int fftW,
-    cudaStream_t stream
-);
+		float *d_a,
+		float *d_b,
+		float *d_dest,
+		int fftH,
+		int fftW,
+		cudaStream_t stream
+		);
 
 extern "C" void mul(
-    float *d_a,
-    float *d_b,
-    float *d_dest,
-    int fftH,
-    int fftW,
-    cudaStream_t stream
-);
+		float *d_a,
+		float *d_b,
+		float *d_dest,
+		int fftH,
+		int fftW,
+		cudaStream_t stream
+		);
 
 
 #endif //CONVOLUTIONFFT2D_COMMON_H
