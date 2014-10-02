@@ -29,6 +29,8 @@
 #include <cufft.h>
 #include "convolutionFFT2D_common.h"
 
+#include "fftw-3.3.4-dll64/fftw3.h"
+
 #define checkCudaErrors(ans) {gpuAssert((ans), __FILE__, __LINE__); }
 #define checkCufftErrors(ans) {gpuAssert((ans), __FILE__, __LINE__); }
 
@@ -81,7 +83,7 @@ float getRand(void)
 	return (float)(rand() % 16);
 }
 
-void prepareKernels(
+void prepareKernelsGPU(
 	float **h_Kernel,
 	int kernelH,
 	int kernelW,
@@ -128,6 +130,202 @@ void prepareKernels(
 	checkCudaErrors(cudaFree(d_PaddedKernelHat));
 }
 
+void padKernelCPU(
+		float *d_Dst,
+		float *d_DstHat,
+		float *d_Src,
+		int fftH,
+		int fftW,
+		int kernelH,
+		int kernelW,
+		int kernelY,
+		int kernelX)
+{
+	int x, y;
+	for(y = 0; y < kernelH; y++) {
+		for(x = 0; x < kernelW; x++) {
+			int ky = y - kernelY;
+			if (ky < 0)
+				ky += fftH;
+
+			int kx = x - kernelX;
+			if (kx < 0)
+				kx += fftW;
+
+			int idx = ky * fftW + kx;
+
+			d_Dst   [idx] = d_Src[y * kernelW + x];
+			d_DstHat[idx] = d_Src[(kernelH - y - 1) * kernelW + (kernelW - x - 1)];
+		}
+	}
+}
+
+void padDataClampToBorderCPU(
+		float *d_estimate,
+		float *d_Dst,
+		float *d_Src,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		int kernelH,
+		int kernelW,
+		int kernelY,
+		int kernelX,
+		int nViews
+		)
+{
+	int x, y;
+	const int borderH = dataH + kernelY;
+	const int borderW = dataW + kernelX;
+
+	for(y = 0; y < fftH; y++) {
+		for(x = 0; x < fftW; x++) {
+			int dy, dx, idx;
+			float v;
+
+			if (y < dataH)
+				dy = y;
+
+			if (x < dataW)
+				dx = x;
+
+			if (y >= dataH && y < borderH)
+				dy = dataH - 1;
+
+			if (x >= dataW && x < borderW)
+				dx = dataW - 1;
+
+			if (y >= borderH)
+				dy = 0;
+
+			if (x >= borderW)
+				dx = 0;
+
+			v = d_Src[dy * dataW + dx];
+			idx = y * fftW + x;
+			d_Dst[idx] = v;
+			d_estimate[idx] += v / nViews;
+		}
+	}
+}
+
+void unpadDataCPU(
+		float *d_Dst,
+		float *d_Src,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW
+		)
+{
+	int x, y;
+	for(y = 0; y < dataH; y++)
+		for(x = 0; x < dataW; x++)
+			d_Dst[y * dataW + x] = d_Src[y * fftW + x];
+}
+
+
+void modulateAndNormalizeCPU(
+		fftwf_complex *d_Dst,
+		fftwf_complex *d_Src,
+		int fftH,
+		int fftW,
+		int padding
+		)
+{
+	int i;
+	const int dataSize = fftH * (fftW / 2 + padding);
+	float c = 1.0f / (float)(fftW * fftH);
+
+	for(i = 0; i < dataSize; i++) {
+		float a_re = d_Src[i][0];
+		float a_im = d_Src[i][1];
+		float b_re = d_Dst[i][0];
+		float b_im = d_Dst[i][1];
+
+		d_Dst[i][0] = c * (a_re * b_re - a_im * b_im);
+		d_Dst[i][1] = c * (a_im * b_re + a_re * b_im);
+	}
+}
+
+void divideCPU(
+		float *d_a,
+		float *d_b,
+		float *d_dest,
+		int fftH,
+		int fftW
+		)
+{
+	const int dataSize = fftH * fftW;
+	int i;
+
+
+	for(i = 0; i < dataSize; i++)
+		d_dest[i] = d_a[i] / d_b[i];
+}
+
+void mulCPU(
+		float *d_a,
+		float *d_b,
+		float *d_dest,
+		int fftH,
+		int fftW
+		)
+{
+	const int dataSize = fftH * fftW;
+	int i;
+
+	for(i = 0; i < dataSize; i++) {
+		// d_dest[i] = d_a[i] * d_b[i];
+		float target = d_a[i] * d_b[i];
+		float change = target - d_dest[i];
+		change *= 0.5;
+		d_dest[i] += change;
+	}
+}
+
+void prepareKernelsCPU(
+	float **h_Kernel,
+	int kernelH,
+	int kernelW,
+	int kernelY,
+	int kernelX,
+	int fftH,
+	int fftW,
+	int nViews,
+	fftwf_complex **h_KernelSpectrum,
+	fftwf_complex **h_KernelHatSpectrum,
+	fftwf_plan fftPlanFwd
+)
+{
+	int v;
+
+	float *d_PaddedKernel    = (float *)fftwf_malloc(fftH    * fftW    * sizeof(float));
+	float *d_PaddedKernelHat = (float *)fftwf_malloc(fftH    * fftW    * sizeof(float));
+	for(v = 0; v < nViews; v++) {
+		memset(d_PaddedKernel,    0, fftH * fftW * sizeof(float));
+		memset(d_PaddedKernelHat, 0, fftH * fftW * sizeof(float));
+
+		padKernelCPU(
+			d_PaddedKernel,
+			d_PaddedKernelHat,
+			h_Kernel[v],
+			fftH,
+			fftW,
+			kernelH,
+			kernelW,
+			kernelY,
+			kernelX
+		);
+
+		fftwf_execute_dft_r2c(fftPlanFwd, d_PaddedKernel,    h_KernelSpectrum[v]);
+		fftwf_execute_dft_r2c(fftPlanFwd, d_PaddedKernelHat, h_KernelHatSpectrum[v]);
+	}
+	fftwf_free(d_PaddedKernel);
+	fftwf_free(d_PaddedKernelHat);
+}
+
 void normalizeMinMax(float *data, int len, float min, float max)
 {
 	int i;
@@ -144,7 +342,115 @@ void normalizeMinMax(float *data, int len, float min, float max)
 }
 
 
-void deconvolve(FILE **dataFiles, FILE *resultFile, int dataW, int dataH, int dataD, float **h_Kernel, int kernelH, int kernelW, int nViews, int iterations)
+void deconvolveCPU(FILE **dataFiles, FILE *resultFile, int dataW, int dataH, int dataD, float **h_Kernel, int kernelH, int kernelW, int nViews, int iterations)
+{
+	long start, stop;
+	int v, z, it;
+	float *h_ResultGPU;
+	
+	fftwf_init_threads();
+	fftwf_plan_with_nthreads(16);
+
+	fftwf_plan fftPlanFwd, fftPlanInv;
+
+	const int kernelY = kernelH / 2;
+	const int kernelX = kernelW / 2;
+	const int    fftH = snapTransformSize(dataH + kernelH - 1);
+	const int    fftW = snapTransformSize(dataW + kernelW - 1);
+
+	float	**h_Data                    =         (float **)malloc(nViews * sizeof(float *));
+	float	**h_PaddedData              =         (float **)malloc(nViews * sizeof(float *));
+	fftwf_complex **h_KernelSpectrum    = (fftwf_complex **)malloc(nViews * sizeof(fftwf_complex *));
+	fftwf_complex **h_KernelHatSpectrum = (fftwf_complex **)malloc(nViews * sizeof(fftwf_complex *));
+
+	float *h_estimate, *h_tmp;
+	fftwf_complex *h_estimateSpectrum;
+
+	h_estimate         =         (float *)fftwf_malloc(fftH *           fftW * sizeof(float));
+	h_tmp              =         (float *)fftwf_malloc(fftH *           fftW * sizeof(float));
+	h_estimateSpectrum = (fftwf_complex *)fftwf_malloc(fftH * (fftW / 2 + 1) * sizeof(fftwf_complex));
+
+	for(v = 0; v < nViews; v++) {
+		h_Data[v]              =         (float *)fftwf_malloc(dataW *          dataH * dataD * sizeof(float));
+		h_PaddedData[v]        =         (float *)fftwf_malloc(fftH  *           fftW * sizeof(float));
+		h_KernelSpectrum[v]    = (fftwf_complex *)fftwf_malloc(fftH  * (fftW / 2 + 1) * sizeof(fftwf_complex));
+		h_KernelHatSpectrum[v] = (fftwf_complex *)fftwf_malloc(fftH  * (fftW / 2 + 1) * sizeof(fftwf_complex));
+	}
+
+
+	fftPlanFwd = fftwf_plan_dft_r2c_2d(fftH, fftW, h_estimate, h_estimateSpectrum, FFTW_ESTIMATE);
+	fftPlanInv = fftwf_plan_dft_c2r_2d(fftH, fftW, h_estimateSpectrum, h_estimate, FFTW_ESTIMATE);
+
+
+	prepareKernelsCPU(h_Kernel, kernelH, kernelW, kernelY, kernelX, fftH, fftW, nViews, h_KernelSpectrum, h_KernelHatSpectrum, fftPlanFwd);
+
+	// load from HDD
+	for(v = 0; v < nViews; v++) {
+		fread(h_Data[v], sizeof(float), dataW * dataH * dataD, dataFiles[v]);
+		normalizeMinMax(h_Data[v], dataW * dataH * dataD, 40, 62000);
+	}
+	start = GetTickCount();
+
+	for(z = 0; z < dataD; z++) {
+
+		// H2D
+		memset(h_estimate, 0, fftH * fftW * sizeof(float));
+		for(v = 0; v < nViews; v++) {
+			memset(h_PaddedData[v], 0, fftH * fftW * sizeof(float));
+			padDataClampToBorderCPU(h_estimate, h_PaddedData[v], h_Data[v], fftH, fftW, dataH, dataW, kernelH, kernelW, kernelY, kernelX, nViews);
+		}
+
+		for(it = 0; it < iterations; it++) {
+			for(v = 0; v < nViews; v++) {
+				fftwf_execute_dft_r2c(fftPlanFwd, h_estimate, h_estimateSpectrum);
+				modulateAndNormalizeCPU(h_estimateSpectrum, h_KernelSpectrum[v], fftH, fftW, 1);
+				fftwf_execute_dft_c2r(fftPlanInv, h_estimateSpectrum, h_tmp);
+				divideCPU(h_PaddedData[v], h_tmp, h_tmp, fftH, fftW);
+		
+				fftwf_execute_dft_r2c(fftPlanFwd, h_tmp, h_estimateSpectrum);
+				modulateAndNormalizeCPU(h_estimateSpectrum, h_KernelHatSpectrum[v], fftH, fftW, 1);
+				fftwf_execute_dft_c2r(fftPlanInv, h_estimateSpectrum, h_tmp);
+				mulCPU(h_estimate, h_tmp, h_estimate, fftW, fftH);
+			}
+		}
+		unpadDataCPU(h_Data[0], h_estimate, fftH, fftW, dataH, dataW);
+
+		for(v = 0; v < nViews; v++)
+			h_Data[v] += (dataW * dataH);
+
+	}
+
+	stop = GetTickCount();
+	printf("Overall time: %d ms\n", (stop - start));
+
+	for(v = 0; v < nViews; v++)
+		h_Data[v] -= (dataW * dataH * dataD);
+	fwrite(h_Data[0] , sizeof(float), dataW * dataH * dataD, resultFile);
+
+
+	fftwf_destroy_plan(fftPlanFwd);
+	fftwf_destroy_plan(fftPlanInv);
+
+	for(v = 0; v < nViews; v++) {
+		fftwf_free(h_Data[v]);
+		fftwf_free(h_PaddedData[v]);
+		fftwf_free(h_KernelSpectrum[v]);
+		fftwf_free(h_KernelHatSpectrum[v]);
+	}
+	fftwf_free(h_estimate);
+	fftwf_free(h_estimateSpectrum);
+	fftwf_free(h_tmp);
+
+	free(h_Data);
+	free(h_PaddedData);
+	free(h_KernelSpectrum);
+	free(h_KernelHatSpectrum);
+
+	printf("...shutting down\n");
+
+}
+
+void deconvolveGPU(FILE **dataFiles, FILE *resultFile, int dataW, int dataH, int dataD, float **h_Kernel, int kernelH, int kernelW, int nViews, int iterations)
 {
 	long start, stop;
 	int v, z, it, stream, nStreams = 3;
@@ -197,7 +503,7 @@ void deconvolve(FILE **dataFiles, FILE *resultFile, int dataW, int dataH, int da
 		checkCudaErrors(cudaMallocHost(&h_Data[v], dataD * dataW * dataH * sizeof(float)));
 	}
 
-	prepareKernels(h_Kernel, kernelH, kernelW, kernelY, kernelX, fftH, fftW, nViews, d_KernelSpectrum, d_KernelHatSpectrum, fftPlanFwd[0]);
+	prepareKernelsGPU(h_Kernel, kernelH, kernelW, kernelY, kernelX, fftH, fftW, nViews, d_KernelSpectrum, d_KernelHatSpectrum, fftPlanFwd[0]);
 
 
 	start = GetTickCount();
@@ -392,19 +698,14 @@ int main(int argc, char **argv)
 
 	const int W = 600;
 	const int H = 600;
-	const int D = 600;
+	const int D = 100;
 
 	const int KW = 83;
 	const int KH = 83;
 
-	float **data = (float **)malloc(2 * sizeof(float *));
-	cudaMallocHost(&data[0], W * H * sizeof(float));
-	cudaMallocHost(&data[1], W * H * sizeof(float));
-
 	float **kernel = (float **)malloc(2 * sizeof(float *));
 	cudaMallocHost(&kernel[0], KW * KH * sizeof(float));
 	cudaMallocHost(&kernel[1], KW * KH * sizeof(float));
-
 
 
 	load(KW, KH, kernel[0], "E:\\SPIM5_Deconvolution\\m6\\cropped\\forplanewisedeconv\\psf3.raw");
@@ -424,16 +725,13 @@ int main(int argc, char **argv)
 		sprintf(path, "E:\\SPIM5_Deconvolution\\m6\\cropped\\forplanewisedeconv\\v35.deconvolved.gpu.raw");
 		FILE *resultFile = fopen(path, "wb");
 
-		deconvolve(dataFiles, resultFile, W, H, D, kernel, KH, KW, 2, it);
+		deconvolveGPU(dataFiles, resultFile, W, H, D, kernel, KH, KW, 2, it);
 
 		fclose(dataFiles[0]);
 		fclose(dataFiles[1]);
 		fclose(resultFile);
 	}
 
-	cudaFreeHost(data[0]);
-	cudaFreeHost(data[1]);
-	free(data);
 	cudaFreeHost(kernel[0]);
 	cudaFreeHost(kernel[1]);
 	free(kernel);
