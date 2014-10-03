@@ -8,7 +8,7 @@
 #include "fftw-3.3.4-dll64/fftw3.h"
 
 
-int snapTransformSize(int dataSize)
+static int snapTransformSize(int dataSize)
 {
 	int hiBit;
 	unsigned int lowPOT, hiPOT;
@@ -32,7 +32,7 @@ int snapTransformSize(int dataSize)
 		return iAlignUp(dataSize, 512);
 }
 
-void padKernelCPU(
+static void padKernelCPU(
 		float *d_Dst,
 		float *d_DstHat,
 		float *d_Src,
@@ -62,7 +62,7 @@ void padKernelCPU(
 	}
 }
 
-void padDataClampToBorderCPU(
+static void padDataClampToBorderCPU(
 		float *d_estimate,
 		float *d_Dst,
 		float *d_Src,
@@ -86,20 +86,16 @@ void padDataClampToBorderCPU(
 
 			if (y < dataH)
 				dy = y;
+			else if (y >= dataH && y < borderH)
+				dy = dataH - 1;
+			else if (y >= borderH)
+				dy = 0;
 
 			if (x < dataW)
 				dx = x;
-
-			if (y >= dataH && y < borderH)
-				dy = dataH - 1;
-
-			if (x >= dataW && x < borderW)
+			else if (x >= dataW && x < borderW)
 				dx = dataW - 1;
-
-			if (y >= borderH)
-				dy = 0;
-
-			if (x >= borderW)
+			else if (x >= borderW)
 				dx = 0;
 
 			v = d_Src[dy * dataW + dx];
@@ -110,7 +106,7 @@ void padDataClampToBorderCPU(
 	}
 }
 
-void unpadDataCPU(
+static void unpadDataCPU(
 		float *d_Dst,
 		float *d_Src,
 		int fftH,
@@ -126,7 +122,7 @@ void unpadDataCPU(
 }
 
 
-void modulateAndNormalizeCPU(
+static void modulateAndNormalizeCPU(
 		fftwf_complex *d_Dst,
 		fftwf_complex *d_Src,
 		int fftH,
@@ -149,7 +145,7 @@ void modulateAndNormalizeCPU(
 	}
 }
 
-void divideCPU(
+static void divideCPU(
 		float *d_a,
 		float *d_b,
 		float *d_dest,
@@ -165,7 +161,7 @@ void divideCPU(
 		d_dest[i] = d_a[i] / d_b[i];
 }
 
-void mulCPU(
+static void mulCPU(
 		float *d_a,
 		float *d_b,
 		float *d_dest,
@@ -185,7 +181,7 @@ void mulCPU(
 	}
 }
 
-void prepareKernelsCPU(
+static void prepareKernelsCPU(
 	float **h_Kernel,
 	int kernelH,
 	int kernelW,
@@ -222,7 +218,7 @@ void prepareKernelsCPU(
 	fftwf_free(d_PaddedKernelHat);
 }
 
-void normalizeMinMax(float *data, int len, float min, float max)
+static void normalizeMinMax(float *data, int len, float min, float max)
 {
 	int i;
 	float *k = data;
