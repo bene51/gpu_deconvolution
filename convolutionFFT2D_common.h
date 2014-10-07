@@ -35,16 +35,6 @@ typedef struct
 // Helper functions
 ////////////////////////////////////////////////////////////////////////////////
 //Round a / b to nearest higher integer value
-inline int iDivUp(int a, int b)
-{
-	return (a % b != 0) ? (a / b + 1) : (a / b);
-}
-
-//Align a to nearest higher multiple of b
-inline int iAlignUp(int a, int b)
-{
-	return (a % b != 0) ? (a - a % b + b) : a;
-}
 
 extern "C" void convolutionClampToBorderCPU(
 		float *h_Result,
@@ -66,8 +56,6 @@ extern "C" void padKernel(
 		int fftW,
 		int kernelH,
 		int kernelW,
-		int kernelY,
-		int kernelX,
 		cudaStream_t stream
 		);
 
@@ -81,8 +69,6 @@ extern "C" void padDataClampToBorder(
 		int dataW,
 		int kernelH,
 		int kernelW,
-		int kernelY,
-		int kernelX,
 		int nViews,
 		cudaStream_t stream
 		);

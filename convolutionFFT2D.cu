@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "fmvd_deconvolve_common.h"
 #include "convolutionFFT2D_common.h"
 #include "convolutionFFT2D.cuh"
 
@@ -43,8 +44,6 @@ extern "C" void padKernel(
 		int fftW,
 		int kernelH,
 		int kernelW,
-		int kernelY,
-		int kernelX,
 		cudaStream_t stream
 		)
 {
@@ -52,7 +51,9 @@ extern "C" void padKernel(
 	dim3 threads(32, 8);
 	dim3 grid(iDivUp(kernelW, threads.x), iDivUp(kernelH, threads.y));
 
-	SET_FLOAT_BASE;
+	const int kernelY = kernelH / 2;
+	const int kernelX = kernelW / 2;
+
 	padKernel_kernel<<<grid, threads, 0, stream>>>(
 			d_Dst,
 			d_DstHat,
@@ -82,8 +83,6 @@ extern "C" void padDataClampToBorder(
 		int dataW,
 		int kernelW,
 		int kernelH,
-		int kernelY,
-		int kernelX,
 		int nViews,
 		cudaStream_t stream
 		)
@@ -93,6 +92,9 @@ extern "C" void padDataClampToBorder(
 	dim3 grid(
 			iDivUp(fftW, threads.x),
 			iDivUp(fftH, threads.y));
+
+	const int kernelY = kernelH / 2;
+	const int kernelX = kernelW / 2;
 
 	SET_FLOAT_BASE;
 	padDataClampToBorder_kernel<<<grid, threads, 0, stream>>>(
