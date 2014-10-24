@@ -30,7 +30,6 @@
 #include "convolutionFFT2D_common.h"
 #include "fmvd_deconvolve_cuda.h"
 #include "fmvd_deconvolve_common.h"
-#include "multithreading.h"
 
 
 #define checkCudaErrors(ans) {gpuAssert((ans), __FILE__, __LINE__); }
@@ -70,7 +69,8 @@ padDataClampToBorderGPU(const struct fmvd_plan_cuda *plan, int v, int stream)
 	);
 }
 
-void prepareKernelsGPU(const struct fmvd_plan_cuda *plan, float const* const* h_Kernel)
+static void
+prepareKernelsGPU(const struct fmvd_plan_cuda *plan, float const* const* h_Kernel)
 {
 	int v, paddedsize, kernelsize;
 	float *d_Kernel, *d_PaddedKernel, *d_PaddedKernelHat;
@@ -114,7 +114,6 @@ void prepareKernelsGPU(const struct fmvd_plan_cuda *plan, float const* const* h_
 
 struct fmvd_plan_cuda *
 fmvd_initialize_cuda(
-		int dev,
 		int dataH,
 		int dataW,
 		float const* const* h_Kernel,
@@ -135,7 +134,6 @@ fmvd_initialize_cuda(
 	datasize = dataH * dataW * sizeof(float);
 
 	plan = (struct fmvd_plan_cuda *)malloc(sizeof(struct fmvd_plan_cuda));
-	plan->device        = dev;
 	plan->dataH         = dataH;
 	plan->dataW         = dataW;
 	plan->fftH          = fftH;
@@ -145,7 +143,6 @@ fmvd_initialize_cuda(
 	plan->nViews        = nViews;
 	plan->nStreams      = nstreams;
 
-	plan->plane_ids = (int *)malloc(nstreams * sizeof(int));
 	plan->get_next_plane = get_next_plane;
 	plan->return_next_plane = return_next_plane;
 
@@ -185,7 +182,7 @@ fmvd_initialize_cuda(
 }
 
 void
-fmvd_deconvolve_plane_cuda(const struct fmvd_plan_cuda *plan, int iterations, void *userdata)
+fmvd_deconvolve_plane_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 {
 	int z, v, stream_idx, it, fftH, fftW, paddedsize, datasize;
 	long start, stop;
@@ -196,9 +193,8 @@ fmvd_deconvolve_plane_cuda(const struct fmvd_plan_cuda *plan, int iterations, vo
 	datasize = plan->dataH * plan->dataW * sizeof(float);
 
 	for(stream_idx = 0; stream_idx < plan->nStreams; stream_idx++) {
-		int *plane_id = plan->plane_ids + stream_idx;
 		int dataOffset = stream_idx * plan->dataH * plan->dataW;
-		plan->get_next_plane(plan->h_Data, dataOffset, plane_id, plan->device, userdata);
+		plan->get_next_plane(plan->h_Data, dataOffset);
 	}
 
 	start = GetTickCount();
@@ -220,9 +216,8 @@ fmvd_deconvolve_plane_cuda(const struct fmvd_plan_cuda *plan, int iterations, vo
 		if(z >= plan->nStreams) {
 //			printf("z %d (stream %d): waiting for stream %d\n", z, stream_idx, stream_idx);
 			checkCudaErrors(cudaStreamSynchronize(stream));
-			int *plane_id = plan->plane_ids + stream_idx;
-			plan->return_next_plane(plan->h_Data[0] + dataOffset, *plane_id, userdata);
-			int has_more_data = plan->get_next_plane(plan->h_Data, dataOffset, plane_id, plan->device, userdata);
+			plan->return_next_plane(plan->h_Data[0] + dataOffset);
+			int has_more_data = plan->get_next_plane(plan->h_Data, dataOffset);
 			if(!has_more_data)
 				break;
 		}
@@ -272,11 +267,8 @@ fmvd_deconvolve_plane_cuda(const struct fmvd_plan_cuda *plan, int iterations, vo
 	stream_idx = stream_idx % plan->nStreams;
 	for(z = 0; z < plan->nStreams; z++) {
 		int dataOffset = stream_idx * plan->dataW * plan->dataH;
-		int *plane_id = plan->plane_ids + stream_idx;
-
-		printf("z %d (stream %d): waiting for stream %d\n", z, stream_idx, stream_idx);
 		checkCudaErrors(cudaStreamSynchronize(plan->streams[stream_idx]));
-		plan->return_next_plane(plan->h_Data[0] + dataOffset, *plane_id, userdata);
+		plan->return_next_plane(plan->h_Data[0] + dataOffset);
 		stream_idx = (stream_idx + 1) % plan->nStreams;
 	}
 
@@ -306,8 +298,6 @@ fmvd_destroy_cuda(struct fmvd_plan_cuda *plan)
 	free(plan->d_KernelSpectrum);
 	free(plan->d_KernelHatSpectrum);
 
-	free(plan->plane_ids);
-
 	for(stream = 0; stream < plan->nStreams; stream++) {
 		checkCudaErrors(cufftDestroy(plan->fftPlanInv[stream]));
 		checkCudaErrors(cufftDestroy(plan->fftPlanFwd[stream]));
@@ -320,194 +310,17 @@ fmvd_destroy_cuda(struct fmvd_plan_cuda *plan)
 	free(plan);
 }
 
-struct iodata {
-	FILE **dataFiles;
-	FILE *resultFile;
-	int datasize;
-	int plane;
-	int n_planes;
-	int n_views;
-	CRITICAL_SECTION rlock, wlock;
-};
-
-int get_next_plane(float **data, int offset, int *plane, int dev, void *userdata)
+void *
+fmvd_malloc(size_t size)
 {
-	struct iodata *io = (struct iodata *)userdata;
-	EnterCriticalSection(&io->rlock);
-	int v;
-	if(io->plane >= io->n_planes) {
-		LeaveCriticalSection(&io->rlock);
-		return 0;
-	}
-	// printf("Reading plane %d on device %d\n", io->plane, dev);
-	for(v = 0; v < io->n_views; v++)
-		fread(data[v] + offset, sizeof(float), io->datasize, io->dataFiles[v]);
-	// set the plane number, which is going to be passed to return_next_plane
-	*plane = io->plane;
-	io->plane++;
-	LeaveCriticalSection(&io->rlock);
-	return 1;
+	void *p;
+	cudaMallocHost(&p, size);
+	return p;
 }
 
-void return_next_plane(float *data, int plane, void *userdata)
+void
+fmvd_free(void *p)
 {
-	struct iodata *io = (struct iodata *)userdata;
-	EnterCriticalSection(&io->wlock);
-	// printf("writing plane %d\n", plane);
-	fseek(io->resultFile, plane * io->datasize * sizeof(float), SEEK_SET);
-	fwrite(data, sizeof(float), io->datasize, io->resultFile);
-	LeaveCriticalSection(&io->wlock);
-}
-
-struct dev_param {
-	int device;
-	int dataW, dataH, dataD;
-	float **h_Kernel;
-	int kernelH, kernelW;
-	int nViews;
-	int nStreams;
-	int iterations;
-	struct iodata *io;
-};
-
-unsigned run(void *param)
-{
-	struct dev_param *p = (struct dev_param *)param;
-	checkCudaErrors(cudaSetDevice(p->device));
-
-	printf("Starting thread on device %d\n", p->device);
-
-	fmvd_plan_cuda *plan = fmvd_initialize_cuda(
-		p->device,
-		p->dataH, p->dataW,
-		p->h_Kernel, p->kernelH, p->kernelW,
-		p->nViews, p->nStreams,
-		get_next_plane,
-		return_next_plane);
-
-	fmvd_deconvolve_plane_cuda(plan, p->iterations, p->io);
-
-	fmvd_destroy_cuda(plan);
-	return 0;
-}
-
-
-void deconvolveGPU(FILE **dataFiles, FILE *resultFile, int dataW, int dataH, int dataD, float **h_Kernel, int kernelH, int kernelW, int nViews, int iterations)
-{
-	int nStreams = 3;
-	int dev, nDevices = 1;
-
-	struct iodata *io = (struct iodata *)malloc(sizeof(struct iodata));
-	io->dataFiles = dataFiles;
-	io->resultFile = resultFile;
-	io->datasize = dataH * dataW;
-	io->plane = 0;
-	io->n_planes = dataD;
-	io->n_views = nViews;
-	InitializeCriticalSection(&io->rlock);
-	InitializeCriticalSection(&io->wlock);
-
-	struct dev_param *dparams = (struct dev_param *)malloc(nDevices * sizeof(struct dev_param));
-	CUTThread *threads = (CUTThread *)malloc(nDevices * sizeof(CUTThread));
-
-	for(dev = 0; dev < nDevices; dev++) {
-		dparams[dev].device = nDevices - dev - 1;
-		dparams[dev].dataW = dataW;
-		dparams[dev].dataH = dataH;
-		dparams[dev].dataD = dataD;
-		dparams[dev].h_Kernel = h_Kernel;
-		dparams[dev].kernelH = kernelH;
-		dparams[dev].kernelW = kernelW;
-		dparams[dev].nViews = nViews;
-		dparams[dev].nStreams = nStreams;
-		dparams[dev].iterations = iterations;
-		dparams[dev].io = io;
-
-		threads[dev] = cutStartThread(run, dparams + dev);
-	}
-
-
-	cutWaitForThreads(threads, nDevices);
-
-	for(dev = 0; dev < nDevices; dev++)
-		cutDestroyThread(threads[dev]);
-	free(dparams);
-
-	DeleteCriticalSection(&io->rlock);
-	DeleteCriticalSection(&io->wlock);
-	free(io);
-
-	printf("...shutting down\n");
-}
-
-void load(int w, int h, float *data, const char *path)
-{
-	FILE *f = fopen(path, "rb");
-	fread(data, sizeof(float), w * h, f);
-	fclose(f);
-}
-
-void write(int w, int h, const float *data, const char *path)
-{
-	FILE *f = fopen(path, "wb");
-	fwrite(data, sizeof(float), w * h, f);
-	fclose(f);
-}
-
-int main(int argc, char **argv)
-{
-	int it;
-	printf("[%s] - Starting...\n", argv[0]);
-
-	const int W = 600;
-	const int H = 600;
-	const int D = 600;
-	const int SEEK = 0;
-
-	const int KW = 83;
-	const int KH = 83;
-
-	float **kernel = (float **)malloc(2 * sizeof(float *));
-	cudaMallocHost(&kernel[0], KW * KH * sizeof(float));
-	cudaMallocHost(&kernel[1], KW * KH * sizeof(float));
-
-
-	load(KW, KH, kernel[0], "E:\\SPIM5_Deconvolution\\m6\\cropped\\forplanewisedeconv\\psf3.raw");
-	load(KW, KH, kernel[1], "E:\\SPIM5_Deconvolution\\m6\\cropped\\forplanewisedeconv\\psf5.raw");
-
-	normalize(kernel[0], KW * KH);
-	normalize(kernel[1], KW * KH);
-
-	FILE **dataFiles = (FILE**)malloc(2 * sizeof(FILE *));
-	char path[256];
-	for(it = 3; it < 4; it++) {
-		dataFiles[0] = fopen("E:\\SPIM5_Deconvolution\\m6\\cropped\\forplanewisedeconv\\v3.raw", "rb");
-		dataFiles[1] = fopen("E:\\SPIM5_Deconvolution\\m6\\cropped\\forplanewisedeconv\\v5.raw", "rb");
-		fseek(dataFiles[0], SEEK * W * H * sizeof(float), SEEK_SET);
-		fseek(dataFiles[1], SEEK * W * H * sizeof(float), SEEK_SET);
-
-		sprintf(path, "E:\\SPIM5_Deconvolution\\m6\\cropped\\forplanewisedeconv\\v35.deconvolved.gpu.raw");
-		FILE *resultFile = fopen(path, "wb");
-
-		deconvolveGPU(dataFiles, resultFile, W, H, D, kernel, KH, KW, 2, it);
-
-		fclose(dataFiles[0]);
-		fclose(dataFiles[1]);
-		fclose(resultFile);
-	}
-
-	cudaFreeHost(kernel[0]);
-	cudaFreeHost(kernel[1]);
-	free(kernel);
-	free(dataFiles);
-
-	// cudaDeviceReset causes the driver to clean up all state. While
-	// not mandatory in normal operation, it is good practice.  It is also
-	// needed to ensure correct operation when the application is being
-	// profiled. Calling cudaDeviceReset causes all profile data to be
-	// flushed before the application exits
-	cudaDeviceReset();
-
-	exit(EXIT_SUCCESS);
+	cudaFreeHost(p);
 }
 
