@@ -10,19 +10,6 @@
  */
 
 
-#define  USE_TEXTURE 0
-
-#if(USE_TEXTURE)
-texture<float, 1, cudaReadModeElementType> texFloat;
-#define   LOAD_FLOAT(i) tex1Dfetch(texFloat, i)
-#define  SET_FLOAT_BASE checkCudaErrors( cudaBindTexture(0, texFloat, d_Src) )
-#else
-#define  LOAD_FLOAT(i) d_Src[i]
-#define SET_FLOAT_BASE
-#endif
-
-
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Position convolution kernel center at (0, 0) in the image
 ////////////////////////////////////////////////////////////////////////////////
@@ -57,8 +44,8 @@ __global__ void padKernel_kernel(
 			kx += fftW;
 		}
 
-		d_Dst[ky * fftW + kx] = LOAD_FLOAT(y * kernelW + x);
-		d_DstHat[ky * fftW + kx] = LOAD_FLOAT((kernelH - y - 1) * kernelW + (kernelW - x - 1));
+		d_Dst[ky * fftW + kx] = d_Src[y * kernelW + x];
+		d_DstHat[ky * fftW + kx] = d_Src[(kernelH - y - 1) * kernelW + (kernelW - x - 1)];
 	}
 }
 
@@ -69,8 +56,8 @@ __global__ void padKernel_kernel(
 ////////////////////////////////////////////////////////////////////////////////
 __global__ void padDataClampToBorder_kernel(
 		float *d_estimate,
-		float *d_Dst,
-		float *d_Src,
+		data_t *d_Dst,
+		data_t *d_Src,
 		int fftH,
 		int fftW,
 		int dataH,
@@ -90,7 +77,7 @@ __global__ void padDataClampToBorder_kernel(
 	if (y < fftH && x < fftW)
 	{
 		int dy, dx, idx;
-		float v;
+		data_t v;
 
 		if (y < dataH)
 		{
@@ -122,16 +109,16 @@ __global__ void padDataClampToBorder_kernel(
 			dx = 0;
 		}
 
-		v = LOAD_FLOAT(dy * dataW + dx);
+		v = d_Src[dy * dataW + dx];
 		idx = y * fftW + x;
 		d_Dst[idx] = v;
-		d_estimate[idx] += v / nViews;
+		d_estimate[idx] += v / (float)nViews;
 		// d_estimate[idx] = 0.002;
 	}
 }
 
 __global__ void unpadData_kernel(
-		float *d_Dst,
+		data_t *d_Dst,
 		float *d_Src,
 		int fftH,
 		int fftW,
@@ -144,7 +131,7 @@ __global__ void unpadData_kernel(
 
 	if (y < dataH && x < dataW)
 	{
-		d_Dst[y * dataW + x] = LOAD_FLOAT(y * fftW + x);
+		d_Dst[y * dataW + x] = (data_t)d_Src[y * fftW + x]; // TODO round
 	}
 }
 
@@ -182,20 +169,24 @@ __global__ void modulateAndNormalize_kernel(
 }
 
 __global__ void divide_kernel(
-		float *d_a,
+		data_t *d_a,
 		float *d_b,
 		float *d_dest,
 		int dataSize
 		)
 {
 	const int i = blockDim.x * blockIdx.x + threadIdx.x;
+	float q;
 
 	if (i >= dataSize)
 	{
 		return;
 	}
+	q = d_b[i];
+	if(q == 0)
+		q = 0.00001;
 
-	d_dest[i] = d_a[i] / d_b[i];
+	d_dest[i] = d_a[i] / q;
 }
 
 __global__ void multiply_kernel(
@@ -217,8 +208,6 @@ __global__ void multiply_kernel(
 	float change = target - d_dest[i];
 	change *= 0.5;
 	d_dest[i] += change;
-
-
 }
 
 

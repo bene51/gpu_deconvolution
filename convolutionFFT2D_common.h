@@ -17,6 +17,8 @@
 #include "cuda_runtime.h"
 
 
+typedef unsigned short data_t;
+// typedef float data_t;
 
 typedef unsigned int uint;
 
@@ -61,8 +63,8 @@ extern "C" void padKernel(
 
 extern "C" void padDataClampToBorder(
 		float *d_estimate,
-		float *d_PaddedData,
-		float *d_Data,
+		data_t *d_PaddedData,
+		data_t *d_Data,
 		int fftH,
 		int fftW,
 		int dataH,
@@ -74,7 +76,7 @@ extern "C" void padDataClampToBorder(
 		);
 
 extern "C" void unpadData(
-		float *d_Dst,
+		data_t *d_Dst,
 		float *d_Src,
 		int fftH,
 		int fftW,
@@ -93,7 +95,7 @@ extern "C" void modulateAndNormalize(
 		);
 
 extern "C" void divide(
-		float *d_a,
+		data_t *d_a,
 		float *d_b,
 		float *d_dest,
 		int fftH,

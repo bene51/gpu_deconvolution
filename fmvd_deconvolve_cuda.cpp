@@ -124,14 +124,15 @@ fmvd_initialize_cuda(
 		datasource_t get_next_plane,
 		datasink_t return_next_plane)
 {
-	int v, stream, fftH, fftW, fftsize, paddedsize, datasize;
+	int v, stream, fftH, fftW, fftsize, paddedsize_float, paddedsize_data_t, datasize;
 	struct fmvd_plan_cuda *plan;
 
 	fftH = snapTransformSize(dataH + kernelH - 1);
 	fftW = snapTransformSize(dataW + kernelW - 1);
 	fftsize = fftH * (fftW / 2 + 1) * sizeof(fComplex);
-	paddedsize = fftH * fftW * sizeof(float);
-	datasize = dataH * dataW * sizeof(float);
+	paddedsize_float = fftH * fftW * sizeof(float);
+	paddedsize_data_t = fftH * fftW * sizeof(data_t);
+	datasize = dataH * dataW * sizeof(data_t);
 
 	plan = (struct fmvd_plan_cuda *)malloc(sizeof(struct fmvd_plan_cuda));
 	plan->dataH         = dataH;
@@ -146,22 +147,22 @@ fmvd_initialize_cuda(
 	plan->get_next_plane = get_next_plane;
 	plan->return_next_plane = return_next_plane;
 
-	plan->h_Data              = (float **)   malloc(nViews * sizeof(float *));
-	plan->d_Data              = (float **)   malloc(nViews * sizeof(float *));
-	plan->d_PaddedData        = (float **)   malloc(nViews * sizeof(float *));
+	plan->h_Data              = (data_t **)  malloc(nViews * sizeof(data_t *));
+	plan->d_Data              = (data_t **)  malloc(nViews * sizeof(data_t *));
+	plan->d_PaddedData        = (data_t **)  malloc(nViews * sizeof(data_t *));
 	plan->d_KernelSpectrum    = (fComplex **)malloc(nViews * sizeof(fComplex *));
 	plan->d_KernelHatSpectrum = (fComplex **)malloc(nViews * sizeof(fComplex *));
 
 	for(v = 0; v < nViews; v++) {
 		checkCudaErrors(cudaMallocHost(&plan->h_Data[v],                   nstreams * datasize));
 		checkCudaErrors(cudaMalloc((void **)&plan->d_Data[v],              nstreams * datasize));
-		checkCudaErrors(cudaMalloc((void **)&plan->d_PaddedData[v],        nstreams * paddedsize));
+		checkCudaErrors(cudaMalloc((void **)&plan->d_PaddedData[v],        nstreams * paddedsize_data_t));
 		checkCudaErrors(cudaMalloc((void **)&plan->d_KernelSpectrum[v],    nstreams * fftsize));
 		checkCudaErrors(cudaMalloc((void **)&plan->d_KernelHatSpectrum[v], nstreams * fftsize));
 	}
 
-	checkCudaErrors(cudaMalloc((void **)&plan->d_estimate,         nstreams * paddedsize));
-	checkCudaErrors(cudaMalloc((void **)&plan->d_tmp,              nstreams * paddedsize));
+	checkCudaErrors(cudaMalloc((void **)&plan->d_estimate,         nstreams * paddedsize_float));
+	checkCudaErrors(cudaMalloc((void **)&plan->d_tmp,              nstreams * paddedsize_float));
 	checkCudaErrors(cudaMalloc((void **)&plan->d_estimateSpectrum, nstreams * fftsize));
 
 
@@ -184,13 +185,14 @@ fmvd_initialize_cuda(
 void
 fmvd_deconvolve_plane_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 {
-	int z, v, stream_idx, it, fftH, fftW, paddedsize, datasize;
+	int z, v, stream_idx, it, fftH, fftW, paddedsize_float, paddedsize_data_t, datasize;
 	long start, stop;
 
 	fftH = plan->fftH;
 	fftW = plan->fftW;
-	paddedsize = fftH * fftW * sizeof(float);
-	datasize = plan->dataH * plan->dataW * sizeof(float);
+	paddedsize_float = fftH * fftW * sizeof(float);
+	paddedsize_data_t = fftH * fftW * sizeof(data_t);
+	datasize = plan->dataH * plan->dataW * sizeof(data_t);
 
 	for(stream_idx = 0; stream_idx < plan->nStreams; stream_idx++) {
 		int dataOffset = stream_idx * plan->dataH * plan->dataW;
@@ -225,15 +227,15 @@ fmvd_deconvolve_plane_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 		// H2D
 		for(v = 0; v < plan->nViews; v++) {
 			// load data from file and upload it to GPU
-			float *d_Data = plan->d_Data[v] + dataOffset;
-			float *h_Data = plan->h_Data[v] + dataOffset;
+			data_t *d_Data = plan->d_Data[v] + dataOffset;
+			data_t *h_Data = plan->h_Data[v] + dataOffset;
 			checkCudaErrors(cudaMemcpyAsync(d_Data, h_Data, datasize, cudaMemcpyHostToDevice, stream));
 		}
-		checkCudaErrors(cudaMemsetAsync(d_estimate, 0, paddedsize, plan->streams[stream_idx]));
+		checkCudaErrors(cudaMemsetAsync(d_estimate, 0, paddedsize_float, plan->streams[stream_idx]));
 
 		for(v = 0; v < plan->nViews; v++) {
-			float *d_PaddedData = plan->d_PaddedData[v] + fftOffset;
-			checkCudaErrors(cudaMemsetAsync(d_PaddedData, 0, paddedsize, stream));
+			data_t *d_PaddedData = plan->d_PaddedData[v] + fftOffset;
+			checkCudaErrors(cudaMemsetAsync(d_PaddedData, 0, paddedsize_data_t, stream));
 			padDataClampToBorderGPU(plan, v, stream_idx);
 		}
 

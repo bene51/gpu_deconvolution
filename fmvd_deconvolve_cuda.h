@@ -6,9 +6,9 @@
 #include <stdio.h>
 
 // returns 0 if no more data is available
-typedef int (*datasource_t)(float **buffer, int offset);
+typedef int (*datasource_t)(data_t **buffer, int offset);
 
-typedef void (*datasink_t)(float *buffer);
+typedef void (*datasink_t)(data_t *buffer);
 
 struct fmvd_plan_cuda {
 	int dataH, dataW;
@@ -20,9 +20,9 @@ struct fmvd_plan_cuda {
 	fComplex **d_KernelSpectrum;
 	fComplex **d_KernelHatSpectrum;
 
-	float **h_Data;
-	float **d_Data;
-	float **d_PaddedData;
+	data_t **h_Data;
+	data_t **d_Data;
+	data_t **d_PaddedData;
 
 	float *d_estimate;
 	fComplex *d_estimateSpectrum;

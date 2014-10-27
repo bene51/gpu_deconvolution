@@ -1,11 +1,5 @@
 #include "fmvd_deconvolve_common.h"
 
-int
-iDivUp(int a, int b)
-{
-	return (a % b != 0) ? (a / b + 1) : (a / b);
-}
-
 //Align a to nearest higher multiple of b
 int
 iAlignUp(int a, int b)

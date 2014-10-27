@@ -14,23 +14,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "fmvd_utils.h"
 #include "fmvd_deconvolve_common.h"
 #include "convolutionFFT2D_common.h"
 #include "convolutionFFT2D.cuh"
-
-#define getLastCudaError(msg)      __getLastCudaError (msg, __FILE__, __LINE__)
-
-inline void __getLastCudaError(const char *errorMessage, const char *file, const int line)
-{
-	cudaError_t err = cudaGetLastError();
-
-	if (cudaSuccess != err)
-	{
-		fprintf(stderr, "%s(%i) : getLastCudaError() CUDA error : %s : (%d) %s.\n",
-				file, line, errorMessage, (int)err, cudaGetErrorString(err));
-		exit(EXIT_FAILURE);
-	}
-}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -75,8 +62,8 @@ extern "C" void padKernel(
 ////////////////////////////////////////////////////////////////////////////////
 extern "C" void padDataClampToBorder(
 		float *d_estimate,
-		float *d_Dst,
-		float *d_Src,
+		data_t *d_Dst,
+		data_t *d_Src,
 		int fftH,
 		int fftW,
 		int dataH,
@@ -96,7 +83,6 @@ extern "C" void padDataClampToBorder(
 	const int kernelY = kernelH / 2;
 	const int kernelX = kernelW / 2;
 
-	SET_FLOAT_BASE;
 	padDataClampToBorder_kernel<<<grid, threads, 0, stream>>>(
 			d_estimate,
 			d_Dst,
@@ -115,7 +101,7 @@ extern "C" void padDataClampToBorder(
 }
 
 extern "C" void unpadData(
-		float *d_Dst,
+		data_t *d_Dst,
 		float *d_Src,
 		int fftH,
 		int fftW,
@@ -129,7 +115,6 @@ extern "C" void unpadData(
 			iDivUp(dataW, threads.x),
 			iDivUp(dataH, threads.y));
 
-	SET_FLOAT_BASE;
 	unpadData_kernel<<<grid, threads, 0, stream>>>(
 			d_Dst,
 			d_Src,
@@ -169,7 +154,7 @@ extern "C" void modulateAndNormalize(
 }
 
 extern "C" void divide(
-		float *d_a,
+		data_t *d_a,
 		float *d_b,
 		float *d_dest,
 		int fftH,

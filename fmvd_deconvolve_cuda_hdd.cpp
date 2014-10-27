@@ -14,25 +14,38 @@ struct iodata {
 
 static iodata *io = NULL;
 
-static int get_next_plane(float **data, int offset)
+static int
+get_next_plane(data_t **data, int offset)
 {
 	int v;
 	if(io->plane >= io->n_planes)
 		return 0;
-	// printf("Reading plane %d on device %d\n", io->plane, dev);
+	printf("Reading plane %d\n", io->plane);
 	for(v = 0; v < io->n_views; v++)
-		fread(data[v] + offset, sizeof(float), io->datasize, io->dataFiles[v]);
+		fread(data[v] + offset, sizeof(data_t), io->datasize, io->dataFiles[v]);
 	io->plane++;
 	return 1;
 }
 
-static void return_next_plane(float *data)
+static void
+return_next_plane(data_t *data)
 {
 	// printf("writing plane %d\n", plane);
-	fwrite(data, sizeof(float), io->datasize, io->resultFile);
+	fwrite(data, sizeof(data_t), io->datasize, io->resultFile);
 }
 
-void fmvd_deconvolve_files_cuda(FILE **dataFiles, FILE *resultFile, int dataW, int dataH, int dataD, float **h_Kernel, int kernelH, int kernelW, int nViews, int iterations)
+void
+fmvd_deconvolve_files_cuda(
+		FILE **dataFiles,
+		FILE *resultFile,
+		int dataW,
+		int dataH,
+		int dataD,
+		float **h_Kernel,
+		int kernelH,
+		int kernelW,
+		int nViews,
+		int iterations)
 {
 	int nStreams = 3;
 
@@ -59,14 +72,16 @@ void fmvd_deconvolve_files_cuda(FILE **dataFiles, FILE *resultFile, int dataW, i
 	printf("...shutting down\n");
 }
 
-static void load(int w, int h, float *data, const char *path)
+static void
+load(int w, int h, float *data, const char *path)
 {
 	FILE *f = fopen(path, "rb");
 	fread(data, sizeof(float), w * h, f);
 	fclose(f);
 }
 
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
 	int it;
 	printf("[%s] - Starting...\n", argv[0]);
