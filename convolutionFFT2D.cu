@@ -64,13 +64,13 @@ extern "C" void padDataClampToBorder(
 		float *d_estimate,
 		data_t *d_Dst,
 		data_t *d_Src,
+		float *d_Weights,
 		int fftH,
 		int fftW,
 		int dataH,
 		int dataW,
 		int kernelW,
 		int kernelH,
-		int nViews,
 		cudaStream_t stream
 		)
 {
@@ -87,6 +87,7 @@ extern "C" void padDataClampToBorder(
 			d_estimate,
 			d_Dst,
 			d_Src,
+			d_Weights,
 			fftH,
 			fftW,
 			dataH,
@@ -94,10 +95,68 @@ extern "C" void padDataClampToBorder(
 			kernelH,
 			kernelW,
 			kernelY,
-			kernelX,
-			nViews
+			kernelX
 			);
 	getLastCudaError("padDataClampToBorder_kernel<<<>>> execution failed\n");
+}
+
+extern "C" void padWeights(
+		float *d_PaddedWeights,
+		float *d_PaddedWeightSums,
+		data_t *d_Weights,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		int kernelH,
+		int kernelW,
+		cudaStream_t stream
+		)
+{
+	dim3 threads(32, 8);
+	dim3 grid(
+			iDivUp(fftW, threads.x),
+			iDivUp(fftH, threads.y));
+
+	const int kernelY = kernelH / 2;
+	const int kernelX = kernelW / 2;
+
+	padWeights_kernel<<<grid, threads, 0, stream>>>(
+			d_PaddedWeights,
+			d_PaddedWeightSums,
+			d_Weights,
+			fftH,
+			fftW,
+			dataH,
+			dataW,
+			kernelH,
+			kernelW,
+			kernelY,
+			kernelX
+			);
+	getLastCudaError("padWeights<<<>>> execution failed\n");
+}
+
+extern "C" void normalizeWeights(
+		float *d_PaddedWeights,
+		float *d_PaddedWeightSums,
+		int fftH,
+		int fftW,
+		cudaStream_t stream
+		)
+{
+	dim3 threads(32, 8);
+	dim3 grid(
+			iDivUp(fftW, threads.x),
+			iDivUp(fftH, threads.y));
+
+	normalizeWeights_kernel<<<grid, threads, 0, stream>>>(
+			d_PaddedWeights,
+			d_PaddedWeightSums,
+			fftH,
+			fftW
+			);
+	getLastCudaError("normalizeWeights_kernel<<<>>> execution failed\n");
 }
 
 extern "C" void unpadData(
@@ -176,6 +235,7 @@ extern "C" void divide(
 extern "C" void mul(
 		float *d_a,
 		float *d_b,
+		float *d_weights,
 		float *d_dest,
 		int fftH,
 		int fftW,
@@ -187,6 +247,7 @@ extern "C" void mul(
 	multiply_kernel<<<iDivUp(dataSize, 256), 256, 0, stream>>>(
 			d_a,
 			d_b,
+			d_weights,
 			d_dest,
 			dataSize
 			);

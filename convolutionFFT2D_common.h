@@ -65,13 +65,34 @@ extern "C" void padDataClampToBorder(
 		float *d_estimate,
 		data_t *d_PaddedData,
 		data_t *d_Data,
+		float *d_Weights,
 		int fftH,
 		int fftW,
 		int dataH,
 		int dataW,
 		int kernelH,
 		int kernelW,
-		int nViews,
+		cudaStream_t stream
+		);
+
+extern "C" void padWeights(
+		float *d_PaddedWeights,
+		float *d_PaddedWeightSums,
+		data_t *d_Weights,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		int kernelH,
+		int kernelW,
+		cudaStream_t stream
+		);
+
+extern "C" void normalizeWeights(
+		float *d_PaddedWeights,
+		float *d_PaddedWeightSums,
+		int fftH,
+		int fftW,
 		cudaStream_t stream
 		);
 
@@ -106,6 +127,7 @@ extern "C" void divide(
 extern "C" void mul(
 		float *d_a,
 		float *d_b,
+		float *d_weights,
 		float *d_dest,
 		int fftH,
 		int fftW,

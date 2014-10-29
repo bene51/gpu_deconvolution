@@ -58,13 +58,13 @@ padDataClampToBorderGPU(const struct fmvd_plan_cuda *plan, int v, int stream)
 		plan->d_estimate + fftOffset,
 		plan->d_PaddedData[v] + fftOffset,
 		plan->d_Data[v] + dataOffset,
+		plan->d_PaddedWeights[v],
 		plan->fftH,
 		plan->fftW,
 		plan->dataH,
 		plan->dataW,
 		plan->kernelH,
 		plan->kernelW,
-		plan->nViews,
 		plan->streams[stream]
 	);
 }
@@ -112,10 +112,50 @@ prepareKernelsGPU(const struct fmvd_plan_cuda *plan, float const* const* h_Kerne
 	checkCudaErrors(cudaFree(d_PaddedKernelHat));
 }
 
+static void
+prepareWeightsGPU(const struct fmvd_plan_cuda *plan, data_t const* const* h_Weights)
+{
+	int v, paddedsize_data_t, paddedsize_float, datasize;
+	data_t *d_Weights;
+	float *d_PaddedWeightSums;
+
+	paddedsize_data_t = plan->fftH * plan->fftW * sizeof(data_t);
+	paddedsize_float = plan->fftH * plan->fftW * sizeof(float);
+	datasize = plan->dataH * plan->dataW * sizeof(data_t);
+
+	checkCudaErrors(cudaMalloc((void **)&d_Weights, datasize));
+	checkCudaErrors(cudaMalloc((void **)&d_PaddedWeightSums, paddedsize_float));
+	checkCudaErrors(cudaMemset(d_PaddedWeightSums, 0, paddedsize_float));
+	for(v = 0; v < plan->nViews; v++) {
+		checkCudaErrors(cudaMemcpy(d_Weights, h_Weights[v], datasize, cudaMemcpyHostToDevice));
+		padWeights(
+			plan->d_PaddedWeights[v],
+			d_PaddedWeightSums,
+			d_Weights,
+			plan->fftH,
+			plan->fftW,
+			plan->dataH,
+			plan->dataW,
+			plan->kernelH,
+			plan->kernelW,
+			0 // default stream
+		);
+	}
+
+	for(v = 0; v < plan->nViews; v++) {
+		printf("Normalizing weights for view %d\n", v);
+		normalizeWeights(plan->d_PaddedWeights[v], d_PaddedWeightSums, plan->fftH, plan->fftW, 0);
+	}
+
+	checkCudaErrors(cudaFree(d_Weights));
+	checkCudaErrors(cudaFree(d_PaddedWeightSums));
+}
+
 struct fmvd_plan_cuda *
 fmvd_initialize_cuda(
 		int dataH,
 		int dataW,
+		data_t const* const* h_Weights,
 		float const* const* h_Kernel,
 		int kernelH,
 		int kernelW,
@@ -150,6 +190,7 @@ fmvd_initialize_cuda(
 	plan->h_Data              = (data_t **)  malloc(nViews * sizeof(data_t *));
 	plan->d_Data              = (data_t **)  malloc(nViews * sizeof(data_t *));
 	plan->d_PaddedData        = (data_t **)  malloc(nViews * sizeof(data_t *));
+	plan->d_PaddedWeights     = (float **)   malloc(nViews * sizeof(float *));
 	plan->d_KernelSpectrum    = (fComplex **)malloc(nViews * sizeof(fComplex *));
 	plan->d_KernelHatSpectrum = (fComplex **)malloc(nViews * sizeof(fComplex *));
 
@@ -157,6 +198,7 @@ fmvd_initialize_cuda(
 		checkCudaErrors(cudaMallocHost(&plan->h_Data[v],                   nstreams * datasize));
 		checkCudaErrors(cudaMalloc((void **)&plan->d_Data[v],              nstreams * datasize));
 		checkCudaErrors(cudaMalloc((void **)&plan->d_PaddedData[v],        nstreams * paddedsize_data_t));
+		checkCudaErrors(cudaMalloc((void **)&plan->d_PaddedWeights[v],     paddedsize_float));
 		checkCudaErrors(cudaMalloc((void **)&plan->d_KernelSpectrum[v],    nstreams * fftsize));
 		checkCudaErrors(cudaMalloc((void **)&plan->d_KernelHatSpectrum[v], nstreams * fftsize));
 	}
@@ -179,6 +221,7 @@ fmvd_initialize_cuda(
 	}
 
 	prepareKernelsGPU(plan, h_Kernel);
+	prepareWeightsGPU(plan, h_Weights);
 	return plan;
 }
 
@@ -249,7 +292,7 @@ fmvd_deconvolve_plane_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 				checkCudaErrors(cufftExecR2C(fftPlanFwd, (cufftReal *)d_tmp, (cufftComplex *)d_estimateSpectrum));
 				modulateAndNormalize(d_estimateSpectrum, plan->d_KernelHatSpectrum[v], fftH, fftW, 1, stream);
 				checkCudaErrors(cufftExecC2R(fftPlanInv, (cufftComplex *)d_estimateSpectrum, (cufftReal *)d_tmp));
-				mul(d_estimate, d_tmp, d_estimate, fftW, fftH, stream);
+				mul(d_estimate, d_tmp, plan->d_PaddedWeights[v], d_estimate, fftW, fftH, stream);
 			}
 		}
 
@@ -287,6 +330,7 @@ fmvd_destroy_cuda(struct fmvd_plan_cuda *plan)
 		checkCudaErrors(cudaFreeHost(plan->h_Data[v]));
 		checkCudaErrors(cudaFree(plan->d_Data[v]));
 		checkCudaErrors(cudaFree(plan->d_PaddedData[v]));
+		checkCudaErrors(cudaFree(plan->d_PaddedWeights[v]));
 		checkCudaErrors(cudaFree(plan->d_KernelSpectrum[v]));
 		checkCudaErrors(cudaFree(plan->d_KernelHatSpectrum[v]));
 	}
@@ -297,6 +341,7 @@ fmvd_destroy_cuda(struct fmvd_plan_cuda *plan)
 	free(plan->h_Data);
 	free(plan->d_Data);
 	free(plan->d_PaddedData);
+	free(plan->d_PaddedWeights);
 	free(plan->d_KernelSpectrum);
 	free(plan->d_KernelHatSpectrum);
 
@@ -316,7 +361,7 @@ void *
 fmvd_malloc(size_t size)
 {
 	void *p;
-	cudaMallocHost(&p, size);
+	checkCudaErrors(cudaMallocHost(&p, size));
 	return p;
 }
 

@@ -33,6 +33,7 @@ transform_data_kernel(
 		int z,
 		int w,
 		int h,
+		int d,
 		int wTransformed,
 		int hTransformed,
 		float *inv_matrix)
@@ -40,11 +41,18 @@ transform_data_kernel(
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
 
-	float rx = inv_matrix[0] * x + inv_matrix[1] * y + inv_matrix[2]  * z + inv_matrix[3];
-	float ry = inv_matrix[4] * x + inv_matrix[5] * y + inv_matrix[6]  * z + inv_matrix[7];
-	float rz = inv_matrix[8] * x + inv_matrix[9] * y + inv_matrix[10] * z + inv_matrix[11];
-
 	if(x < wTransformed && y < hTransformed) {
+		float rx = inv_matrix[0] * x + inv_matrix[1] * y + inv_matrix[2]  * z + inv_matrix[3];
+		float ry = inv_matrix[4] * x + inv_matrix[5] * y + inv_matrix[6]  * z + inv_matrix[7];
+		float rz = inv_matrix[8] * x + inv_matrix[9] * y + inv_matrix[10] * z + inv_matrix[11];
+
+		/*
+		// mirror
+		if(rx < 0) rx = -rx; if(rx > w - 1) rx = 2 * w - rx - 2;
+		if(ry < 0) ry = -ry; if(ry > h - 1) ry = 2 * h - ry - 2;
+		if(rz < 0) rz = -rz; if(rz > d - 1) rz = 2 * d - rz - 2;
+		*/
+
 		float v = tex3D(tex, rx + 0.5, ry + 0.5, rz + 0.5);
 		unsigned short iv = (unsigned short)(v * 65535 + 0.5);
 		dTransformed[y * wTransformed + x] = iv;
@@ -67,27 +75,27 @@ transform_mask_kernel(
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
 
-	float rx = inv_matrix[0] * x + inv_matrix[1] * y + inv_matrix[2]  * z + inv_matrix[3];
-	float ry = inv_matrix[4] * x + inv_matrix[5] * y + inv_matrix[6]  * z + inv_matrix[7];
-	float rz = inv_matrix[8] * x + inv_matrix[9] * y + inv_matrix[10] * z + inv_matrix[11];
-
 	if(x < wTransformed && y < hTransformed) {
+		float rx = inv_matrix[0] * x + inv_matrix[1] * y + inv_matrix[2]  * z + inv_matrix[3];
+		float ry = inv_matrix[4] * x + inv_matrix[5] * y + inv_matrix[6]  * z + inv_matrix[7];
+		float rz = inv_matrix[8] * x + inv_matrix[9] * y + inv_matrix[10] * z + inv_matrix[11];
+
 		if(rx < 0 || rx >= w || ry < 0 || ry >= h || rz < 0 || rz >= d) {
 			dTransformed[y * wTransformed + x] = 0;
 		} else {
 			float v = 1;
-			// TODO doesn't take z spacing of the original images take into account
-			float dx = rx < w / 2 ? rx : w - 1 - rx;
-			float dy = ry < h / 2 ? ry : h - 1 - ry;
-			float dz = rz < d / 2 ? rz : d - 1 - rz;
+			float dx = rx < w / 2 ? rx : w - rx;
+			float dy = ry < h / 2 ? ry : h - ry;
+			float dz = rz < d / 2 ? rz : d - rz;
 			dz *= zspacing;
+
 			if(dx < border)
 				v = v * (0.5f * (1 - cos(dx / border * CUDART_PI_F)));
 			if(dy < border)
 				v = v * (0.5f * (1 - cos(dy / border * CUDART_PI_F)));
 			if(dz < border)
 				v = v * (0.5f * (1 - cos(dz / border * CUDART_PI_F)));
-			dTransformed[y * wTransformed + x] = (unsigned short)(65535 * v);
+			dTransformed[y * wTransformed + x] = (unsigned short)(65535 * v + 0.5);
 		}
 	}
 }
@@ -156,7 +164,7 @@ void transform_cuda(
 	if(createTransformedMasks) {
 		streamIdx = 0;
 		cudaStream_t stream = streams[streamIdx];
-		dim3 threads(32, 8);
+		dim3 threads(32, 32);
 		dim3 grid(iDivUp(tw, threads.x), iDivUp(th, threads.y));
 		transform_mask_kernel<<<grid, threads, 0, stream>>>(d_transformed, td / 2, w, h, d, zspacing, tw, th, border, d_inverse);
 		getLastCudaError("transform_mask_kernel<<<>>> execution failed\n");
@@ -175,13 +183,15 @@ void transform_cuda(
 		cudaStream_t stream = streams[streamIdx];
 
 		// save the data before overwriting
-		checkCudaErrors(cudaStreamSynchronize(stream));
-		fwrite(h_transformed, sizeof(unsigned short), tw * th, out);
+		if(z >= nStreams) {
+			checkCudaErrors(cudaStreamSynchronize(stream));
+			fwrite(h_transformed, sizeof(unsigned short), tw * th, out);
+		}
 
 		// launch the kernel
-		dim3 threads(32, 8);
+		dim3 threads(32, 32);
 		dim3 grid(iDivUp(tw, threads.x), iDivUp(th, threads.y));
-		transform_data_kernel<<<grid, threads, 0, stream>>>(d_transformed, z, w, h, tw, th, d_inverse);
+		transform_data_kernel<<<grid, threads, 0, stream>>>(d_transformed, z, w, h, d, tw, th, d_inverse);
 		getLastCudaError("transform_data_kernel<<<>>> execution failed\n");
 		checkCudaErrors(cudaMemcpyAsync(h_transformed, d_transformed, plane_size, cudaMemcpyDeviceToHost, stream));
 	}

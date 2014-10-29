@@ -23,6 +23,7 @@ struct fmvd_plan_cuda {
 	data_t **h_Data;
 	data_t **d_Data;
 	data_t **d_PaddedData;
+	float **d_PaddedWeights;
 
 	float *d_estimate;
 	fComplex *d_estimateSpectrum;
@@ -39,7 +40,7 @@ struct fmvd_plan_cuda {
 };
 
 struct fmvd_plan_cuda *
-fmvd_initialize_cuda(int dataH, int dataW, float const* const* h_Kernel, int kernelH, int kernelW, int nViews, int nstreams, datasource_t get_next_plane, datasink_t return_next_plane);
+fmvd_initialize_cuda(int dataH, int dataW, data_t const* const* h_Weights, float const* const* h_Kernel, int kernelH, int kernelW, int nViews, int nstreams, datasource_t get_next_plane, datasink_t return_next_plane);
 
 
 void
@@ -49,7 +50,7 @@ void
 fmvd_destroy_cuda(struct fmvd_plan_cuda *plan);
 
 void
-fmvd_deconvolve_files_cuda(FILE **dataFiles, FILE *resultFile, int dataW, int dataH, int dataD, float **h_Kernel, int kernelH, int kernelW, int nViews, int iterations);
+fmvd_deconvolve_files_cuda(FILE **dataFiles, FILE *resultFile, int dataW, int dataH, int dataD, data_t **h_Weights, float **h_Kernel, int kernelH, int kernelW, int nViews, int iterations);
 
 void *
 fmvd_malloc(size_t size);

@@ -56,6 +56,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 		jint dataW,
 		jint dataH,
 		jint dataD,
+		jobjectArray weightfiles,
 		jobjectArray kernelfiles,
 		jint kernelH,
 		jint kernelW,
@@ -77,6 +78,18 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 		normalize(kernel[v], kernelW * kernelH);
 	}
 
+	data_t **h_Weights = (data_t **)malloc(nViews * sizeof(data_t *));
+	int datasize = dataW * dataH;
+	for(int v = 0; v < nViews; v++) {
+		h_Weights[v] = (data_t *)malloc(datasize * sizeof(data_t));
+		jstring path = (jstring)env->GetObjectArrayElement(weightfiles, v);
+		const char *wFile = env->GetStringUTFChars(path, NULL);
+		FILE *f = fopen(wFile, "rb");
+		fread(h_Weights[v], sizeof(data_t), datasize, f);
+		fclose(f);
+		env->ReleaseStringUTFChars(path, wFile);
+	}
+
 
 	// Open input files
 	FILE **dataFiles = (FILE**)malloc(nViews * sizeof(FILE *));
@@ -84,6 +97,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 		jstring jpath = (jstring)env->GetObjectArrayElement(inputfiles, v);
 		const char *path = env->GetStringUTFChars(jpath, NULL);
 		dataFiles[v] = fopen(path, "rb");
+		// fseek(dataFiles[v], 300 * dataW * dataH * sizeof(data_t), SEEK_SET); // TODO remove
 		env->ReleaseStringUTFChars(jpath, path);
 	}
 
@@ -93,7 +107,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 	env->ReleaseStringUTFChars(outputfile, path);
 
 	// Do the deconvolution
-	fmvd_deconvolve_files_cuda(dataFiles, resultFile, dataW, dataH, dataD, kernel, kernelH, kernelW, nViews, iterations);
+	fmvd_deconvolve_files_cuda(dataFiles, resultFile, dataW, dataH, dataD, h_Weights, kernel, kernelH, kernelW, nViews, iterations);
 
 	// Close input and output files
 	for(int v = 0; v < nViews; v++)
@@ -101,9 +115,12 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 	fclose(resultFile);
 
 	// Cleanup
-	for(int v = 0; v < nViews; v++)
+	for(int v = 0; v < nViews; v++) {
 		fmvd_free(kernel[v]);
+		free(h_Weights[v]);
+	}
 	free(kernel);
+	free(h_Weights);
 	free(dataFiles);
 }
 

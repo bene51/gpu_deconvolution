@@ -41,6 +41,7 @@ fmvd_deconvolve_files_cuda(
 		int dataW,
 		int dataH,
 		int dataD,
+		data_t **h_Weights,
 		float **h_Kernel,
 		int kernelH,
 		int kernelW,
@@ -48,17 +49,19 @@ fmvd_deconvolve_files_cuda(
 		int iterations)
 {
 	int nStreams = 3;
+	int datasize = dataH * dataW;
 
 	io = (struct iodata *)malloc(sizeof(struct iodata));
 	io->dataFiles = dataFiles;
 	io->resultFile = resultFile;
-	io->datasize = dataH * dataW;
+	io->datasize = datasize;
 	io->plane = 0;
 	io->n_planes = dataD;
 	io->n_views = nViews;
 
 	fmvd_plan_cuda *plan = fmvd_initialize_cuda(
 		dataH, dataW,
+		h_Weights,
 		h_Kernel, kernelH, kernelW,
 		nViews, nStreams,
 		get_next_plane,
@@ -80,6 +83,7 @@ load(int w, int h, float *data, const char *path)
 	fclose(f);
 }
 
+/*
 int
 main(int argc, char **argv)
 {
@@ -130,4 +134,4 @@ main(int argc, char **argv)
 	exit(EXIT_SUCCESS);
 }
 
-
+*/

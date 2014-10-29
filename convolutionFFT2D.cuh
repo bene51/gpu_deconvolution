@@ -9,7 +9,6 @@
  *
  */
 
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Position convolution kernel center at (0, 0) in the image
 ////////////////////////////////////////////////////////////////////////////////
@@ -50,6 +49,87 @@ __global__ void padKernel_kernel(
 }
 
 
+__global__ void padWeights_kernel(
+		float *d_PaddedWeights,
+		float *d_PaddedWeightSums,
+		data_t *d_Weights,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		int kernelH,
+		int kernelW,
+		int kernelY,
+		int kernelX
+		)
+{
+	const int y = blockDim.y * blockIdx.y + threadIdx.y;
+	const int x = blockDim.x * blockIdx.x + threadIdx.x;
+
+	const int borderH = dataH + kernelY;
+	const int borderW = dataW + kernelX;
+
+	if (y < fftH && x < fftW)
+	{
+		int dy, dx, idx;
+		data_t v;
+
+		if (y < dataH)
+		{
+			dy = y;
+		}
+
+		if (x < dataW)
+		{
+			dx = x;
+		}
+
+		if (y >= dataH && y < borderH)
+		{
+			dy = dataH - 1;
+		}
+
+		if (x >= dataW && x < borderW)
+		{
+			dx = dataW - 1;
+		}
+
+		if (y >= borderH)
+		{
+			dy = 0;
+		}
+
+		if (x >= borderW)
+		{
+			dx = 0;
+		}
+
+		v = d_Weights[dy * dataW + dx];
+		idx = y * fftW + x;
+
+		d_PaddedWeights[idx] = (float)v;
+		d_PaddedWeightSums[idx] += (float)v;
+	}
+}
+
+__global__ void normalizeWeights_kernel(
+		float *d_PaddedWeights,
+		float *d_PaddedWeightSums,
+		int fftH,
+		int fftW
+		)
+{
+	const int y = blockDim.y * blockIdx.y + threadIdx.y;
+	const int x = blockDim.x * blockIdx.x + threadIdx.x;
+
+	if (y < fftH && x < fftW)
+	{
+		int idx = y * fftW + x;
+		float d = d_PaddedWeightSums[idx];
+		if(d > 0)
+			d_PaddedWeights[idx] /= d;
+	}
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Prepare data for "pad to border" addressing mode
@@ -58,6 +138,7 @@ __global__ void padDataClampToBorder_kernel(
 		float *d_estimate,
 		data_t *d_Dst,
 		data_t *d_Src,
+		float *d_Weights,
 		int fftH,
 		int fftW,
 		int dataH,
@@ -65,8 +146,7 @@ __global__ void padDataClampToBorder_kernel(
 		int kernelH,
 		int kernelW,
 		int kernelY,
-		int kernelX,
-		int nViews
+		int kernelX
 		)
 {
 	const int y = blockDim.y * blockIdx.y + threadIdx.y;
@@ -112,7 +192,10 @@ __global__ void padDataClampToBorder_kernel(
 		v = d_Src[dy * dataW + dx];
 		idx = y * fftW + x;
 		d_Dst[idx] = v;
-		d_estimate[idx] += v / (float)nViews;
+		float change = v * d_Weights[idx];
+		d_estimate[idx] += change;
+		
+		// d_estimate[idx] += v / (float)nViews;
 		// d_estimate[idx] = 0.002;
 	}
 }
@@ -183,15 +266,14 @@ __global__ void divide_kernel(
 		return;
 	}
 	q = d_b[i];
-	if(q == 0)
-		q = 0.00001;
-
-	d_dest[i] = d_a[i] / q;
+	if(q > 1)
+		d_dest[i] = d_a[i] / q;
 }
 
 __global__ void multiply_kernel(
 		float *d_a,
 		float *d_b,
+		float *weights,
 		float *d_dest,
 		int dataSize
 		)
@@ -206,7 +288,8 @@ __global__ void multiply_kernel(
 	// d_dest[i] = d_a[i] * d_b[i];
 	float target = d_a[i] * d_b[i];
 	float change = target - d_dest[i];
-	change *= 0.5;
+	float weight = weights[i];
+	change *= weight;
 	d_dest[i] += change;
 }
 
