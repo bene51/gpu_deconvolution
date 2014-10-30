@@ -44,7 +44,7 @@ fmvd_initialize_cuda(int dataH, int dataW, data_t const* const* h_Weights, float
 
 
 void
-fmvd_deconvolve_plane_cuda(const struct fmvd_plan_cuda *plan, int iterations);
+fmvd_deconvolve_planes_cuda(const struct fmvd_plan_cuda *plan, int iterations);
 
 void
 fmvd_destroy_cuda(struct fmvd_plan_cuda *plan);

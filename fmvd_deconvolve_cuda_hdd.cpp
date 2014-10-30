@@ -67,7 +67,7 @@ fmvd_deconvolve_files_cuda(
 		get_next_plane,
 		return_next_plane);
 
-	fmvd_deconvolve_plane_cuda(plan, iterations);
+	fmvd_deconvolve_planes_cuda(plan, iterations);
 
 	fmvd_destroy_cuda(plan);
 	free(io);

@@ -226,7 +226,7 @@ fmvd_initialize_cuda(
 }
 
 void
-fmvd_deconvolve_plane_cuda(const struct fmvd_plan_cuda *plan, int iterations)
+fmvd_deconvolve_planes_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 {
 	int z, v, stream_idx, it, fftH, fftW, paddedsize_float, paddedsize_data_t, datasize;
 	long start, stop;
