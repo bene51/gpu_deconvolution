@@ -150,11 +150,12 @@ void transform_cuda(
 	// bind array to 3D texture
 	checkCudaErrors(cudaBindTextureToArray(tex, d_data, desc));
 
-	checkCudaErrors(cudaMalloc((void **)&d_transformed, plane_size));
+	int nStreams = 2;
+
+	checkCudaErrors(cudaMalloc((void **)&d_transformed, 2 * plane_size));
 	checkCudaErrors(cudaMalloc((void **)&d_inverse, 12 * sizeof(float)));
 	checkCudaErrors(cudaMemcpy(d_inverse, h_inverse, 12 * sizeof(float), cudaMemcpyHostToDevice));
 
-	int nStreams = 2;
 	cudaStream_t *streams = (cudaStream_t *)malloc(nStreams * sizeof(cudaStream_t));
 	int streamIdx;
 	for(streamIdx = 0; streamIdx < nStreams; streamIdx++)
@@ -181,9 +182,11 @@ void transform_cuda(
 	for(int z = 0; z < td; z++) {
 		streamIdx = z % nStreams;
 		cudaStream_t stream = streams[streamIdx];
+		unsigned short* d_trans = d_transformed + streamIdx * tw * th;
 
 		// save the data before overwriting
 		if(z >= nStreams) {
+			checkCudaErrors(cudaMemcpyAsync(h_transformed, d_trans, plane_size, cudaMemcpyDeviceToHost, stream));
 			checkCudaErrors(cudaStreamSynchronize(stream));
 			fwrite(h_transformed, sizeof(unsigned short), tw * th, out);
 		}
@@ -191,16 +194,20 @@ void transform_cuda(
 		// launch the kernel
 		dim3 threads(32, 32);
 		dim3 grid(iDivUp(tw, threads.x), iDivUp(th, threads.y));
-		transform_data_kernel<<<grid, threads, 0, stream>>>(d_transformed, z, w, h, d, tw, th, d_inverse);
+		transform_data_kernel<<<grid, threads, 0, stream>>>(d_trans, z, w, h, d, tw, th, d_inverse);
 		getLastCudaError("transform_data_kernel<<<>>> execution failed\n");
-		checkCudaErrors(cudaMemcpyAsync(h_transformed, d_transformed, plane_size, cudaMemcpyDeviceToHost, stream));
 	}
-	streamIdx = (streamIdx + 1) % nStreams;
-	cudaStream_t stream = streams[streamIdx];
 
-	// save the data before overwriting
-	checkCudaErrors(cudaStreamSynchronize(stream));
-	fwrite(h_transformed, sizeof(unsigned short), tw * th, out);
+	for(int z = 0; z < nStreams; z++) {
+		streamIdx = (streamIdx + 1) % nStreams;
+		cudaStream_t stream = streams[streamIdx];
+		unsigned short* d_trans = d_transformed + streamIdx * tw * th;
+
+		// save the remaining planes
+		checkCudaErrors(cudaMemcpyAsync(h_transformed, d_trans, plane_size, cudaMemcpyDeviceToHost, stream));
+		checkCudaErrors(cudaStreamSynchronize(stream));
+		fwrite(h_transformed, sizeof(unsigned short), tw * th, out);
+	}
 
 
 	long end = GetTickCount();
