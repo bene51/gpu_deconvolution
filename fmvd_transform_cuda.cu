@@ -102,7 +102,7 @@ transform_mask_kernel(
 
 
 void transform_cuda(
-		unsigned short *h_data,
+		unsigned short **h_data,
 		int w,
 		int h,
 		int d,
@@ -133,12 +133,15 @@ void transform_cuda(
 
 
 	// copy data to 3D array
-	cudaMemcpy3DParms copyParams = {0};
-	copyParams.srcPtr   = make_cudaPitchedPtr((void *)h_data, w * sizeof(unsigned short), w, h);
-	copyParams.dstArray = d_data;
-	copyParams.extent   = volumeSize;
-	copyParams.kind     = cudaMemcpyHostToDevice;
-	checkCudaErrors(cudaMemcpy3D(&copyParams));
+	for(int z = 0; z < d; z++) {
+		cudaMemcpy3DParms copyParams = {0};
+		copyParams.dstArray = d_data;
+		copyParams.extent   = make_cudaExtent(w, h, 1);
+		copyParams.kind     = cudaMemcpyHostToDevice;
+		copyParams.srcPtr = make_cudaPitchedPtr((void *)h_data[z], w * sizeof(unsigned short), w, h);
+		copyParams.dstPos = make_cudaPos(0, 0, z);
+		checkCudaErrors(cudaMemcpy3D(&copyParams));
+	}
 
 	// set texture parameters
 	tex.normalized = false;                     // access with unnormalized texture coordinates
@@ -152,7 +155,7 @@ void transform_cuda(
 
 	int nStreams = 2;
 
-	checkCudaErrors(cudaMalloc((void **)&d_transformed, 2 * plane_size));
+	checkCudaErrors(cudaMalloc((void **)&d_transformed, nStreams * plane_size));
 	checkCudaErrors(cudaMalloc((void **)&d_inverse, 12 * sizeof(float)));
 	checkCudaErrors(cudaMemcpy(d_inverse, h_inverse, 12 * sizeof(float), cudaMemcpyHostToDevice));
 
@@ -412,5 +415,6 @@ int test_transform(int argc, char **argv)
 	cudaFreeHost(data);
 
 	cudaDeviceReset();
+	return 0;
 }
 

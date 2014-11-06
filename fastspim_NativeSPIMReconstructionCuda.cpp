@@ -22,30 +22,44 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
 		jfloat zspacing,
 		jstring maskfile)
 {
+	printf("Should transform now, but just testing at the moment\n");
 	int z;
 	int planesize = w * h * sizeof(unsigned short);
-	unsigned short *cdata = (unsigned short *)malloc(d * planesize);
+	unsigned short **cdata = (unsigned short **)malloc(d * sizeof(unsigned short *));
+	jshortArray *jdata = (jshortArray *)malloc(d * sizeof(jshortArray));
+	if(!cdata) {
+		printf("not enough memory\n");
+		return;
+	}
+	for(z = 0; z < d; z++) {
+		jdata[z] = (jshortArray)env->GetObjectArrayElement(data, z);
+		cdata[z] = (unsigned short *)env->GetShortArrayElements(jdata[z], NULL);
+		if(!cdata[z]) {
+			printf("not enough memory\n");
+			return;
+		}
+	}
+
+	float *mat = (float *)env->GetFloatArrayElements(invMatrix, NULL);
+
 	const char *outpath = env->GetStringUTFChars(outfile, NULL);
 	const char *maskpath = NULL;
 	if(createTransformedMasks)
 		maskpath = env->GetStringUTFChars(maskfile, NULL);
-	for(z = 0; z < d; z++) {
-		jshortArray plane = (jshortArray)env->GetObjectArrayElement(data, z);
-		jshort *elements = env->GetShortArrayElements(plane, NULL);
-		memcpy(cdata + z * w * h, elements, planesize);
-		env->ReleaseShortArrayElements(plane, elements, JNI_ABORT);
-	}
-	float *mat = (float *)env->GetFloatArrayElements(invMatrix, NULL);
 	
 	transform_cuda(cdata, w, h, d, targetW, targetH, targetD, mat, outpath,
 		createTransformedMasks, border, zspacing, maskpath);
-	
+
+	for(z = 0; z < d; z++)
+		env->ReleaseShortArrayElements(jdata[z], (jshort *)cdata[z], JNI_ABORT);
+
 	env->ReleaseFloatArrayElements(invMatrix, mat, JNI_ABORT);
 	env->ReleaseStringUTFChars(outfile, outpath);
 	if(createTransformedMasks)
 		env->ReleaseStringUTFChars(maskfile, maskpath);
 
 	free(cdata);
+	free(jdata);
 }
 
 JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
