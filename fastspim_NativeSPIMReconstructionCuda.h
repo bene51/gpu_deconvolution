@@ -42,6 +42,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 		jobjectArray kernelfiles,
 		jint kernelH,
 		jint kernelW,
+		jint psfType,
 		jint nViews,
 		jint iterations);
 #ifdef __cplusplus

@@ -14,7 +14,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 __global__ void padKernel_kernel(
 		float *d_Dst,
-		float *d_DstHat,
 		float *d_Src,
 		int fftH,
 		int fftW,
@@ -44,7 +43,6 @@ __global__ void padKernel_kernel(
 		}
 
 		d_Dst[ky * fftW + kx] = d_Src[y * kernelW + x];
-		d_DstHat[ky * fftW + kx] = d_Src[(kernelH - y - 1) * kernelW + (kernelW - x - 1)];
 	}
 }
 
@@ -134,7 +132,7 @@ __global__ void normalizeWeights_kernel(
 ////////////////////////////////////////////////////////////////////////////////
 // Prepare data for "pad to border" addressing mode
 ////////////////////////////////////////////////////////////////////////////////
-__global__ void padDataClampToBorder_kernel(
+__global__ void padDataClampToBorderAndInitialize_kernel(
 		float *d_estimate,
 		data_t *d_Dst,
 		data_t *d_Src,
@@ -197,6 +195,83 @@ __global__ void padDataClampToBorder_kernel(
 		
 		// d_estimate[idx] += v / (float)nViews;
 		// d_estimate[idx] = 0.002;
+	}
+}
+
+__global__ void padDataClampToBorderFloat_kernel(
+		float *d_Dst,
+		float *d_Src,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		int kernelH,
+		int kernelW,
+		int kernelY,
+		int kernelX
+		)
+{
+	const int y = blockDim.y * blockIdx.y + threadIdx.y;
+	const int x = blockDim.x * blockIdx.x + threadIdx.x;
+	const int borderH = dataH + kernelY;
+	const int borderW = dataW + kernelX;
+
+	if (y < fftH && x < fftW)
+	{
+		int dy, dx, idx;
+		float v;
+
+		if (y < dataH)
+		{
+			dy = y;
+		}
+
+		if (x < dataW)
+		{
+			dx = x;
+		}
+
+		if (y >= dataH && y < borderH)
+		{
+			dy = dataH - 1;
+		}
+
+		if (x >= dataW && x < borderW)
+		{
+			dx = dataW - 1;
+		}
+
+		if (y >= borderH)
+		{
+			dy = 0;
+		}
+
+		if (x >= borderW)
+		{
+			dx = 0;
+		}
+
+		v = d_Src[dy * dataW + dx];
+		idx = y * fftW + x;
+		d_Dst[idx] = v;
+	}
+}
+
+__global__ void unpadDataFloat_kernel(
+		float *d_Dst,
+		float *d_Src,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW
+		)
+{
+	const int y = blockDim.y * blockIdx.y + threadIdx.y;
+	const int x = blockDim.x * blockIdx.x + threadIdx.x;
+
+	if (y < dataH && x < dataW)
+	{
+		d_Dst[y * dataW + x] = d_Src[y * fftW + x];
 	}
 }
 

@@ -1,4 +1,5 @@
 #include "fmvd_deconvolve_common.h"
+#include <math.h>
 
 //Align a to nearest higher multiple of b
 int
@@ -60,7 +61,7 @@ normalize(float *kernel, int len)
 	}
 	k = kernel;
 	for(i = 0; i < len; i++) {
-		*k /= sum;
+		*k /= (float)sum;
 		k++;
 	}
 }
@@ -87,4 +88,25 @@ normalizeRange(float *kernel, int len)
 		k++;
 	}
 }
+
+void
+computeInvertedKernel(const float *kernel, float *out, int kw, int kh)
+{
+	int x, y;
+	for(y = 0; y < kh; y++) {
+		for(x = 0; x < kw; x++) {
+			out[y * kw + x] = kernel[(kh - y - 1) * kw + (kw - x - 1)];
+		}
+	}
+}
+
+void
+computeExponentialKernel(const float *kernel, float *out, int kw, int kh, int exponent)
+{
+	int i;
+	int wh = kw * kh;
+	for(i = 0; i < wh; i++)
+		out[i] = (float)pow(kernel[i], exponent);
+}
+
 

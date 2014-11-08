@@ -52,7 +52,6 @@ extern "C" void convolutionClampToBorderCPU(
 
 extern "C" void padKernel(
 		float *d_PaddedKernel,
-		float *d_PaddedKernelHat,
 		float *d_Kernel,
 		int fftH,
 		int fftW,
@@ -61,7 +60,19 @@ extern "C" void padKernel(
 		cudaStream_t stream
 		);
 
-extern "C" void padDataClampToBorder(
+extern "C" void padDataClampToBorderFloat(
+		float *d_PaddedData,
+		float *d_Data,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		int kernelH,
+		int kernelW,
+		cudaStream_t stream
+		);
+
+extern "C" void padDataClampToBorderAndInitialize(
 		float *d_estimate,
 		data_t *d_PaddedData,
 		data_t *d_Data,
@@ -93,6 +104,16 @@ extern "C" void normalizeWeights(
 		float *d_PaddedWeightSums,
 		int fftH,
 		int fftW,
+		cudaStream_t stream
+		);
+
+extern "C" void unpadDataFloat(
+		float *d_Dst,
+		float *d_Src,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
 		cudaStream_t stream
 		);
 

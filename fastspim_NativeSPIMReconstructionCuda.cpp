@@ -1,9 +1,12 @@
+#ifdef _WIN32
+#define _CRT_SECURE_NO_DEPRECATE
+#endif
+#include <string.h>
+#include <stdlib.h>
 #include "fastspim_NativeSPIMReconstructionCuda.h"
 #include "fmvd_transform_cuda.h"
 #include "fmvd_deconvolve_cuda.h"
 #include "fmvd_deconvolve_common.h"
-#include <string.h>
-#include <stdlib.h>
 
 JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
 		JNIEnv *env,
@@ -74,11 +77,10 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 		jobjectArray kernelfiles,
 		jint kernelH,
 		jint kernelW,
+		jint iterationType,
 		jint nViews,
 		jint iterations)
 {
-	int it;
-
 	// Read kernels
 	float **kernel = (float **)malloc(nViews * sizeof(float *));
 	for(int v = 0; v < nViews; v++) {
@@ -121,7 +123,8 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 	env->ReleaseStringUTFChars(outputfile, path);
 
 	// Do the deconvolution
-	fmvd_deconvolve_files_cuda(dataFiles, resultFile, dataW, dataH, dataD, h_Weights, kernel, kernelH, kernelW, nViews, iterations);
+	fmvd_psf_type iteration_type = (fmvd_psf_type)iterationType;
+	fmvd_deconvolve_files_cuda(dataFiles, resultFile, dataW, dataH, dataD, h_Weights, kernel, kernelH, kernelW, iteration_type, nViews, iterations);
 
 	// Close input and output files
 	for(int v = 0; v < nViews; v++)

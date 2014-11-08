@@ -1,7 +1,10 @@
+#ifdef _WIN32
+#define _CRT_SECURE_NO_DEPRECATE
+#endif
+#include <stdio.h>
+#include <stdlib.h>
 #include "fmvd_deconvolve_cuda.h"
 #include "fmvd_deconvolve_common.h"
-#include <stdlib.h>
-#include <stdio.h>
 
 struct iodata {
 	FILE **dataFiles;
@@ -45,6 +48,7 @@ fmvd_deconvolve_files_cuda(
 		float **h_Kernel,
 		int kernelH,
 		int kernelW,
+		fmvd_psf_type iteration_type,
 		int nViews,
 		int iterations)
 {
@@ -62,7 +66,7 @@ fmvd_deconvolve_files_cuda(
 	fmvd_plan_cuda *plan = fmvd_initialize_cuda(
 		dataH, dataW,
 		h_Weights,
-		h_Kernel, kernelH, kernelW,
+		h_Kernel, kernelH, kernelW, iteration_type,
 		nViews, nStreams,
 		get_next_plane,
 		return_next_plane);

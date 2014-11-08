@@ -25,7 +25,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 extern "C" void padKernel(
 		float *d_Dst,
-		float *d_DstHat,
 		float *d_Src,
 		int fftH,
 		int fftW,
@@ -43,7 +42,6 @@ extern "C" void padKernel(
 
 	padKernel_kernel<<<grid, threads, 0, stream>>>(
 			d_Dst,
-			d_DstHat,
 			d_Src,
 			fftH,
 			fftW,
@@ -60,7 +58,43 @@ extern "C" void padKernel(
 ////////////////////////////////////////////////////////////////////////////////
 // Prepare data for "pad to border" addressing mode
 ////////////////////////////////////////////////////////////////////////////////
-extern "C" void padDataClampToBorder(
+extern "C" void padDataClampToBorderFloat(
+		float *d_PaddedData,
+		float *d_Data,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		int kernelH,
+		int kernelW,
+		cudaStream_t stream
+		)
+{
+	assert(d_PaddedData != d_Data);
+	dim3 threads(32, 8);
+	dim3 grid(
+			iDivUp(fftW, threads.x),
+			iDivUp(fftH, threads.y));
+
+	const int kernelY = kernelH / 2;
+	const int kernelX = kernelW / 2;
+
+	padDataClampToBorderFloat_kernel<<<grid, threads, 0, stream>>>(
+			d_PaddedData,
+			d_Data,
+			fftH,
+			fftW,
+			dataH,
+			dataW,
+			kernelH,
+			kernelW,
+			kernelY,
+			kernelX
+			);
+	getLastCudaError("padDataClampToBorder_kernel<<<>>> execution failed\n");
+}
+
+extern "C" void padDataClampToBorderAndInitialize(
 		float *d_estimate,
 		data_t *d_Dst,
 		data_t *d_Src,
@@ -83,7 +117,7 @@ extern "C" void padDataClampToBorder(
 	const int kernelY = kernelH / 2;
 	const int kernelX = kernelW / 2;
 
-	padDataClampToBorder_kernel<<<grid, threads, 0, stream>>>(
+	padDataClampToBorderAndInitialize_kernel<<<grid, threads, 0, stream>>>(
 			d_estimate,
 			d_Dst,
 			d_Src,
@@ -97,7 +131,7 @@ extern "C" void padDataClampToBorder(
 			kernelY,
 			kernelX
 			);
-	getLastCudaError("padDataClampToBorder_kernel<<<>>> execution failed\n");
+	getLastCudaError("padDataClampToBorderAndInitialize_kernel<<<>>> execution failed\n");
 }
 
 extern "C" void padWeights(
@@ -175,6 +209,32 @@ extern "C" void unpadData(
 			iDivUp(dataH, threads.y));
 
 	unpadData_kernel<<<grid, threads, 0, stream>>>(
+			d_Dst,
+			d_Src,
+			fftH,
+			fftW,
+			dataH,
+			dataW
+			);
+	getLastCudaError("unpadData_kernel<<<>>> execution failed\n");
+}
+
+extern "C" void unpadDataFloat(
+		float *d_Dst,
+		float *d_Src,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		cudaStream_t stream
+		)
+{
+	dim3 threads(32, 8);
+	dim3 grid(
+			iDivUp(dataW, threads.x),
+			iDivUp(dataH, threads.y));
+
+	unpadDataFloat_kernel<<<grid, threads, 0, stream>>>(
 			d_Dst,
 			d_Src,
 			fftH,

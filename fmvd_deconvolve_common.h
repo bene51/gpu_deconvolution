@@ -17,5 +17,13 @@ normalize(float *kernel, int len);
 void
 normalizeRange(float *kernel, int len);
 
+void
+computeInvertedKernel(const float *kernel, float *out, int kw, int kh);
+
+void
+computeExponentialKernel(const float *kernel, float *out, int kw, int kh, int exponent);
+
+
+
 #endif // __FMVD_DECONVOLVE_COMMON__
 
