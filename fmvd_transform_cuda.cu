@@ -39,11 +39,13 @@ transform_plane_kernel(
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
+	const float *m = inv_matrix;
 
 	if(x < wTransformed && y < hTransformed) {
-		float rx = inv_matrix[0] * x + inv_matrix[1] * y + inv_matrix[2]  * z + inv_matrix[3];
-		float ry = inv_matrix[4] * x + inv_matrix[5] * y + inv_matrix[6]  * z + inv_matrix[7];
-		float rz = inv_matrix[8] * x + inv_matrix[9] * y + inv_matrix[10] * z + inv_matrix[11];
+		// apply inverse transform
+		float rx = m[0] * x + m[1] * y + m[2]  * z + m[3];
+		float ry = m[4] * x + m[5] * y + m[6]  * z + m[7];
+		float rz = m[8] * x + m[9] * y + m[10] * z + m[11];
 
 		/*
 		// mirror
@@ -73,15 +75,20 @@ create_transformed_mask_kernel(
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
+	const float *m = inv_matrix;
 
 	if(x < wTransformed && y < hTransformed) {
-		float rx = inv_matrix[0] * x + inv_matrix[1] * y + inv_matrix[2]  * z + inv_matrix[3];
-		float ry = inv_matrix[4] * x + inv_matrix[5] * y + inv_matrix[6]  * z + inv_matrix[7];
-		float rz = inv_matrix[8] * x + inv_matrix[9] * y + inv_matrix[10] * z + inv_matrix[11];
+		int idx = y * wTransformed + x;
+		float rx = m[0] * x + m[1] * y + m[2]  * z + m[3];
+		float ry = m[4] * x + m[5] * y + m[6]  * z + m[7];
+		float rz = m[8] * x + m[9] * y + m[10] * z + m[11];
 
-		if(rx < 0 || rx >= w || ry < 0 || ry >= h || rz < 0 || rz >= d) {
-			dTransformed[y * wTransformed + x] = 0;
+		if(rx < 0 || rx >= w ||
+				ry < 0 || ry >= h ||
+				rz < 0 || rz >= d) {
+			dTransformed[idx] = 0;
 		} else {
+			float pi = CUDART_PI_F;
 			float v = 1;
 			float dx = rx < w / 2 ? rx : w - rx;
 			float dy = ry < h / 2 ? ry : h - ry;
@@ -89,12 +96,12 @@ create_transformed_mask_kernel(
 			dz *= zspacing;
 
 			if(dx < border)
-				v = v * (0.5f * (1 - cos(dx / border * CUDART_PI_F)));
+				v = v * (0.5f * (1 - cos(dx / border * pi)));
 			if(dy < border)
-				v = v * (0.5f * (1 - cos(dy / border * CUDART_PI_F)));
+				v = v * (0.5f * (1 - cos(dy / border * pi)));
 			if(dz < border)
-				v = v * (0.5f * (1 - cos(dz / border * CUDART_PI_F)));
-			dTransformed[y * wTransformed + x] = (unsigned short)(65535 * v + 0.5);
+				v = v * (0.5f * (1 - cos(dz / border * pi)));
+			dTransformed[idx] = (unsigned short)(65535 * v + 0.5);
 		}
 	}
 }
@@ -113,7 +120,8 @@ transform_plane(
 {
 	dim3 threads(32, 32);
 	dim3 grid(iDivUp(tw, threads.x), iDivUp(th, threads.y));
-	transform_plane_kernel<<<grid, threads, 0, stream>>>(d_trans, z, w, h, d, tw, th, d_inverse);
+	transform_plane_kernel<<<grid, threads, 0, stream>>>(
+			d_trans, z, w, h, d, tw, th, d_inverse);
 	getLastCudaError("transform_data_kernel<<<>>> execution failed\n");
 }
 
@@ -134,7 +142,8 @@ create_transformed_mask(
 	dim3 threads(32, 32);
 	dim3 grid(iDivUp(tw, threads.x), iDivUp(th, threads.y));
 	create_transformed_mask_kernel<<<grid, threads, 0, stream>>>(
-			d_transformed, tz, w, h, d, zspacing, tw, th, border, d_inverse);
+			d_transformed, tz, w, h, d, zspacing,
+			tw, th, border, d_inverse);
 	getLastCudaError("transform_mask_kernel<<<>>> execution failed\n");
 }
 
@@ -167,22 +176,23 @@ void transform_cuda(
 
 	printf("td = %d\n", td);
 
-
 	// copy data to 3D array
 	for(int z = 0; z < d; z++) {
 		cudaMemcpy3DParms copyParams = {0};
 		copyParams.dstArray = d_data;
 		copyParams.extent   = make_cudaExtent(w, h, 1);
 		copyParams.kind     = cudaMemcpyHostToDevice;
-		copyParams.srcPtr = make_cudaPitchedPtr((void *)h_data[z], w * sizeof(unsigned short), w, h);
+		copyParams.srcPtr = make_cudaPitchedPtr((void *)h_data[z],
+			       	w * sizeof(unsigned short), w, h);
 		copyParams.dstPos = make_cudaPos(0, 0, z);
 		checkCudaErrors(cudaMemcpy3D(&copyParams));
 	}
 
 	// set texture parameters
-	tex.normalized = false;                     // access with unnormalized texture coordinates
+	tex.normalized = false;                     // access with unnormalized
+	                                            // texture coordinates
 	tex.filterMode = cudaFilterModeLinear;      // linear interpolation
-	tex.addressMode[0] = cudaAddressModeBorder; // wrap texture coordinates
+	tex.addressMode[0] = cudaAddressModeBorder; // pad with 0
 	tex.addressMode[1] = cudaAddressModeBorder;
 	tex.addressMode[2] = cudaAddressModeBorder;
 
@@ -191,11 +201,16 @@ void transform_cuda(
 
 	int nStreams = 2;
 
-	checkCudaErrors(cudaMalloc((void **)&d_transformed, nStreams * plane_size));
-	checkCudaErrors(cudaMalloc((void **)&d_inverse, 12 * sizeof(float)));
-	checkCudaErrors(cudaMemcpy(d_inverse, h_inverse, 12 * sizeof(float), cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMalloc((void **)&d_transformed,
+				nStreams * plane_size));
+	checkCudaErrors(cudaMalloc((void **)&d_inverse,
+				12 * sizeof(float)));
+	checkCudaErrors(cudaMemcpy(d_inverse, h_inverse,
+			       	12 * sizeof(float), cudaMemcpyHostToDevice));
 
-	cudaStream_t *streams = (cudaStream_t *)malloc(nStreams * sizeof(cudaStream_t));
+	cudaStream_t *streams = (cudaStream_t *)malloc(
+				nStreams * sizeof(cudaStream_t));
+
 	int streamIdx;
 	for(streamIdx = 0; streamIdx < nStreams; streamIdx++)
 		cudaStreamCreate(&streams[streamIdx]);
@@ -204,8 +219,16 @@ void transform_cuda(
 	if(createTransformedMasks) {
 		streamIdx = 0;
 		cudaStream_t stream = streams[streamIdx];
-		create_transformed_mask(d_transformed, td / 2, w, h, d, zspacing, tw, th, (float)border, d_inverse, stream);
-		checkCudaErrors(cudaMemcpyAsync(h_transformed, d_transformed, plane_size, cudaMemcpyDeviceToHost, stream));
+		create_transformed_mask(
+				d_transformed,
+				td / 2,
+				w, h, d,
+				zspacing,
+				tw, th, (float)border,
+				d_inverse,
+				stream);
+		checkCudaErrors(cudaMemcpyAsync(h_transformed, d_transformed,
+				plane_size, cudaMemcpyDeviceToHost, stream));
 		checkCudaErrors(cudaStreamSynchronize(stream));
 		FILE *maskout = fopen(maskfile, "wb");
 		fwrite(h_transformed, sizeof(unsigned short), tw * th, maskout);
@@ -222,9 +245,15 @@ void transform_cuda(
 
 		// save the data before overwriting
 		if(z >= nStreams) {
-			checkCudaErrors(cudaMemcpyAsync(h_transformed, d_trans, plane_size, cudaMemcpyDeviceToHost, stream));
+			checkCudaErrors(cudaMemcpyAsync(
+						h_transformed,
+					       	d_trans,
+					       	plane_size,
+					       	cudaMemcpyDeviceToHost,
+					       	stream));
 			checkCudaErrors(cudaStreamSynchronize(stream));
-			fwrite(h_transformed, sizeof(unsigned short), tw * th, out);
+			fwrite(h_transformed, sizeof(unsigned short),
+					tw * th, out);
 		}
 
 		// launch the kernel
@@ -237,7 +266,8 @@ void transform_cuda(
 		unsigned short* d_trans = d_transformed + streamIdx * tw * th;
 
 		// save the remaining planes
-		checkCudaErrors(cudaMemcpyAsync(h_transformed, d_trans, plane_size, cudaMemcpyDeviceToHost, stream));
+		checkCudaErrors(cudaMemcpyAsync(h_transformed, d_trans,
+				plane_size, cudaMemcpyDeviceToHost, stream));
 		checkCudaErrors(cudaStreamSynchronize(stream));
 		fwrite(h_transformed, sizeof(unsigned short), tw * th, out);
 	}
