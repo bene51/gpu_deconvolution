@@ -9,7 +9,6 @@
 // Include CUDA runtime and CUFFT
 #include <cuda_runtime.h>
 #include <math_constants.h>
-#include <cufft.h>
 
 #define checkCudaErrors(ans) {__gpuAssert((ans), __FILE__, __LINE__); }
 
@@ -25,10 +24,10 @@ __gpuAssert(unsigned int code, const char *file, int line, bool abort=true)
 	}
 }
 
-texture<unsigned short, 3, cudaReadModeNormalizedFloat> tex;
+static texture<unsigned short, 3, cudaReadModeNormalizedFloat> tex;
 
 __global__ void
-transform_data_kernel(
+transform_plane_kernel(
 		unsigned short *dTransformed,
 		int z,
 		int w,
@@ -36,7 +35,7 @@ transform_data_kernel(
 		int d,
 		int wTransformed,
 		int hTransformed,
-		float *inv_matrix)
+		const float *inv_matrix)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -60,7 +59,7 @@ transform_data_kernel(
 }
 
 __global__ void
-transform_mask_kernel(
+create_transformed_mask_kernel(
 		unsigned short *dTransformed,
 		int z,
 		int w,
@@ -70,7 +69,7 @@ transform_mask_kernel(
 		int wTransformed,
 		int hTransformed,
 		float border,
-		float *inv_matrix)
+		const float *inv_matrix)
 {
 	int x = threadIdx.x + blockIdx.x * blockDim.x;
 	int y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -100,6 +99,44 @@ transform_mask_kernel(
 	}
 }
 
+void
+transform_plane(
+		unsigned short *d_trans,
+		int z,
+		int w,
+		int h,
+		int d,
+		int tw,
+		int th,
+		const float *d_inverse,
+		cudaStream_t stream)
+{
+	dim3 threads(32, 32);
+	dim3 grid(iDivUp(tw, threads.x), iDivUp(th, threads.y));
+	transform_plane_kernel<<<grid, threads, 0, stream>>>(d_trans, z, w, h, d, tw, th, d_inverse);
+	getLastCudaError("transform_data_kernel<<<>>> execution failed\n");
+}
+
+void
+create_transformed_mask(
+		unsigned short *d_transformed,
+		int tz,
+		int w,
+		int h,
+		int d,
+		float zspacing,
+		int tw,
+		int th,
+		float border,
+		const float *d_inverse,
+		cudaStream_t stream)
+{
+	dim3 threads(32, 32);
+	dim3 grid(iDivUp(tw, threads.x), iDivUp(th, threads.y));
+	create_transformed_mask_kernel<<<grid, threads, 0, stream>>>(
+			d_transformed, tz, w, h, d, zspacing, tw, th, border, d_inverse);
+	getLastCudaError("transform_mask_kernel<<<>>> execution failed\n");
+}
 
 void transform_cuda(
 		unsigned short **h_data,
@@ -167,10 +204,7 @@ void transform_cuda(
 	if(createTransformedMasks) {
 		streamIdx = 0;
 		cudaStream_t stream = streams[streamIdx];
-		dim3 threads(32, 32);
-		dim3 grid(iDivUp(tw, threads.x), iDivUp(th, threads.y));
-		transform_mask_kernel<<<grid, threads, 0, stream>>>(d_transformed, td / 2, w, h, d, zspacing, tw, th, (float)border, d_inverse);
-		getLastCudaError("transform_mask_kernel<<<>>> execution failed\n");
+		create_transformed_mask(d_transformed, td / 2, w, h, d, zspacing, tw, th, (float)border, d_inverse, stream);
 		checkCudaErrors(cudaMemcpyAsync(h_transformed, d_transformed, plane_size, cudaMemcpyDeviceToHost, stream));
 		checkCudaErrors(cudaStreamSynchronize(stream));
 		FILE *maskout = fopen(maskfile, "wb");
@@ -194,10 +228,7 @@ void transform_cuda(
 		}
 
 		// launch the kernel
-		dim3 threads(32, 32);
-		dim3 grid(iDivUp(tw, threads.x), iDivUp(th, threads.y));
-		transform_data_kernel<<<grid, threads, 0, stream>>>(d_trans, z, w, h, d, tw, th, d_inverse);
-		getLastCudaError("transform_data_kernel<<<>>> execution failed\n");
+		transform_plane(d_trans, z, w, h, d, tw, th, d_inverse, stream);
 	}
 
 	for(int z = 0; z < nStreams; z++) {
