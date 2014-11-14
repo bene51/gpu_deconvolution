@@ -1,29 +1,33 @@
-NVCC = nvcc
-INC = --include-path "c:/Program Files/Java/jdk1.7.0_51/include" --include-path "c:/Program Files/Java/jdk1.7.0_51/include/win32"
-NVCC_FLAGS = -c -O2 -Xcompiler "/EHsc /W3 /nologo /O2 /Zi /MT" --cl-version 2012
+NVCC := nvcc
+INCL := --include-path "$(JAVA_HOME)/include" --include-path "$(JAVA_HOME)/include/linux"
+NVCC_COMPILE_FLAGS = -c -O2 -m64 -Xcompiler -fPIC
+NVCC_LINK_FLAGS = --shared -m64 -lcufft
 
-all: NativeSPIMReconstructionCuda.dll
+all: libNativeSPIMReconstructionCuda.so
 
-CPP_SOURCES = fastspim_NativeSPIMReconstructionCuda.cpp fmvd_deconvolve_cuda.cpp fmvd_deconvolve_cuda_hdd.cpp
+CPP_SOURCES = fastspim_NativeSPIMReconstructionCuda.cpp \
+	      fmvd_deconvolve_cuda.cpp \
+	      fmvd_deconvolve_cuda_hdd.cpp \
+	      fmvd_deconvolve_common.cpp
 
-CU_SOURCES = fmvd_transform_cuda.cu convolutionFFT2D.cu fmvd_deconvolve_common.cu
+CU_SOURCES  = fmvd_transform_cuda.cu \
+	      convolutionFFT2D.cu
 
-CPP_OBJS = fastspim_NativeSPIMReconstructionCuda.obj fmvd_deconvolve_cuda.obj fmvd_deconvolve_cuda_hdd.obj
-CU_SOURCES = fmvd_transform_cuda.cu_obj convolutionFFT2D.cu_obj fmvd_deconvolve_common.cu_obj
+CPP_OBJS = fastspim_NativeSPIMReconstructionCuda.obj fmvd_deconvolve_cuda.obj fmvd_deconvolve_cuda_hdd.obj fmvd_deconvolve_common.obj
+CU_OBJS = fmvd_transform_cuda.obj convolutionFFT2D.obj 
 
-REBUILDABLES = $(CPP_OBJS) $(CU_OBJS) NativeSPIMReconstructionCuda.dll
+REBUILDABLES = $(CPP_OBJS) $(CU_OBJS) libNativeSPIMReconstructionCuda.so
 
 clean :
 	rm -f $(REBUILDABLES)
 
-NativeSPIMReconstructionCuda.dll : $(CPP_OBJS) $(CU_OBJS)
-	$(NVCC) --shared $** -lcufft -o $@
+libNativeSPIMReconstructionCuda.so : $(CPP_OBJS) $(CU_OBJS)
+	$(NVCC) $(NVCC_LINK_FLAGS) $^ -o $@
 
-.cpp.obj :
-	@echo Building $@ from $<
-	$(NVCC) $(NVCC_FLAGS) $(INC) -o $@ $<
+$(CPP_OBJS) : %.obj : %.cpp
+	$(NVCC) $(NVCC_COMPILE_FLAGS) $(INCL) -o $@ $<
 
-%.cu_obj : %.cu
-	$(NVCC) $(NVCC_FLAGS) -o $@ $<
+$(CU_OBJS) : %.obj : %.cu
+	$(NVCC) $(NVCC_COMPILE_FLAGS) $(INCL) -o $@ $<
 
 
