@@ -10,19 +10,6 @@
 #include <cuda_runtime.h>
 #include <math_constants.h>
 
-#define checkCudaErrors(ans) {__gpuAssert((ans), __FILE__, __LINE__); }
-
-void
-__gpuAssert(unsigned int code, const char *file, int line, bool abort=true)
-{
-	if(code != cudaSuccess) {
-		const char *str = cudaGetErrorString((cudaError_t)code);
-		fprintf(stderr, "GPUAssert: error %d %s %d\n", code, file, line);
-		fprintf(stderr, "%s\n", str);
-		if(abort)
-			exit(code);
-	}
-}
 
 static texture<unsigned short, 3, cudaReadModeNormalizedFloat> tex;
 

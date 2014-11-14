@@ -9,13 +9,7 @@ int
 snapTransformSize(int dataSize);
 
 void
-normalizeMinMax(float *data, int len, float min, float max);
-
-void
 normalize(float *kernel, int len);
-
-void
-normalizeRange(float *kernel, int len);
 
 void
 computeInvertedKernel(const float *kernel, float *out, int kw, int kh);

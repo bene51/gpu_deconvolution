@@ -20,8 +20,6 @@
 typedef unsigned short data_t;
 // typedef float data_t;
 
-typedef unsigned int uint;
-
 #ifdef __CUDACC__
 typedef float2 fComplex;
 #else

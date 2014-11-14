@@ -34,22 +34,6 @@ snapTransformSize(int dataSize)
 }
 
 void
-normalizeMinMax(float *data, int len, float min, float max)
-{
-	int i;
-	float *k = data;
-	for(i = 0; i < len; i++) {
-		float v = *k;
-		v = (v - min) / (max - min);
-
-		if(v < 0) v = 0;
-		if(v > 1) v = 1;
-		(*k) = v;
-		k++;
-	}
-}
-
-void
 normalize(float *kernel, int len)
 {
 	int i;
@@ -62,29 +46,6 @@ normalize(float *kernel, int len)
 	k = kernel;
 	for(i = 0; i < len; i++) {
 		*k /= (float)sum;
-		k++;
-	}
-}
-
-void
-normalizeRange(float *kernel, int len)
-{
-	int i;
-	float *k = kernel;
-	float min = kernel[0];
-	float max = kernel[0];
-	k++;
-	for(i = 1; i < len; i++) {
-		float v = *k;
-		if(v < min) min = v;
-		if(v > max) max = v;
-		k++;
-	}
-	k = kernel;
-	for(i = 0; i < len; i++) {
-		float v = *k;
-		v = (v - min) / (max - min);
-		(*k) = v;
 		k++;
 	}
 }
