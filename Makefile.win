@@ -1,3 +1,35 @@
-.SUFFIXES: .obj .cpp
+JAVA_HOME = c:/Program Files/Java/jdk1.7.0_60
+CL_VERSION = 2010
+
+.SUFFIXES: .cpp .obj .cu
+
+NVCC = nvcc
+INCL = --include-path "$(JAVA_HOME)/include" --include-path "$(JAVA_HOME)/include/win32"
+NVCC_COMPILE_FLAGS = -c -O2 -Xcompiler "/EHsc /W3 /nologo /O2 /Zi /MT" --cl-version $(CL_VERSION) --use-local-env 
+NVCC_LINK_FLAGS = --cl-version $(CL_VERSION) --use-local-env --shared -lcufft
+
+CPP_OBJS = fastspim_NativeSPIMReconstructionCuda.obj \
+	   fmvd_deconvolve_cuda.obj \
+	   fmvd_deconvolve_common.obj \
+	   fmvd_deconvolve_cuda_hdd.obj
+
+CU_OBJS  = fmvd_transform_cuda.obj \
+	   convolutionFFT2D.obj
+
+all: NativeSPIMReconstructionCuda.dll
+
+clean:
+	del NativeSPIMReconstructionCuda.dll $(CPP_OBJS) $(CU_OBJS)
+
 .cpp.obj:
-    @echo Building $@ from $<
+	@echo Building $@ from $<
+	$(NVCC) $(NVCC_COMPILE_FLAGS) $(INCL) -o $@ $< >nul
+
+.cu.obj:
+	@echo Building $@ from $<
+	$(NVCC) $(NVCC_COMPILE_FLAGS) $(INCL) -o $@ $< >nul
+
+NativeSPIMReconstructionCuda.dll: $(CU_OBJS) $(CPP_OBJS)
+	@echo linking...
+	$(NVCC) $(NVCC_LINK_FLAGS) -o $@ $** >nul
+
