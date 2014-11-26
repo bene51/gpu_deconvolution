@@ -80,6 +80,10 @@ create_transformed_mask_kernel(
 			float dx = rx < w / 2 ? rx : w - rx;
 			float dy = ry < h / 2 ? ry : h - ry;
 			float dz = rz < d / 2 ? rz : d - rz;
+
+			dx += 1;
+			dy += 1;
+			dz += 1;
 			dz *= zspacing;
 
 			if(dx < border)
