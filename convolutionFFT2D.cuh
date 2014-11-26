@@ -190,11 +190,9 @@ __global__ void padDataClampToBorderAndInitialize_kernel(
 		v = d_Src[dy * dataW + dx];
 		idx = y * fftW + x;
 		d_Dst[idx] = v;
-		float change = v * d_Weights[idx];
-		d_estimate[idx] += change;
-		
-		// d_estimate[idx] += v / (float)nViews;
-		// d_estimate[idx] = 0.002;
+		// float change = v * d_Weights[idx];
+		// d_estimate[idx] += change;
+		d_estimate[idx] += 100;
 	}
 }
 
