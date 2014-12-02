@@ -9,7 +9,7 @@ NVCC_COMPILE_FLAGS = -c -O2 -Xcompiler "/EHsc /W3 /nologo /O2 /Zi /MT" --cl-vers
 NVCC_LINK_FLAGS = --cl-version $(CL_VERSION) --use-local-env --shared -lcufft
 
 CPP_OBJS = fastspim_NativeSPIMReconstructionCuda.obj \
-	   fmvd_deconvolve_cuda.obj \
+	   fmvd_deconvolve.obj \
 	   fmvd_deconvolve_common.obj \
 	   fmvd_deconvolve_cuda_hdd.obj
 

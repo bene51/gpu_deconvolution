@@ -1,4 +1,4 @@
-#include "fmvd_deconvolve_cuda.h"
+#include "fmvd_deconvolve.h"
 
 #include <windows.h>
 #include <assert.h>

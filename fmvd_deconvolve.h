@@ -1,5 +1,5 @@
-#ifndef __FMVD_DECONVOLVE_CUDA__
-#define __FMVD_DECONVOLVE_CUDA__
+#ifndef FMVD_DECONVOLVE
+#define FMVD_DECONVOLVE
 
 #include <cufft.h>
 #include <stdio.h>
@@ -60,4 +60,4 @@ fmvd_malloc(size_t size);
 void
 fmvd_free(void *p);
 
-#endif // __FMVD_DECONVOLVE_CUDA__
+#endif // FMVD_DECONVOLVE

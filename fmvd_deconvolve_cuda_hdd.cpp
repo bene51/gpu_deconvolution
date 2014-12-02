@@ -3,7 +3,7 @@
 #endif
 #include <stdio.h>
 #include <stdlib.h>
-#include "fmvd_deconvolve_cuda.h"
+#include "fmvd_deconvolve.h"
 #include "fmvd_deconvolve_common.h"
 
 struct iodata {

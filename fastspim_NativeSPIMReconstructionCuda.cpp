@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include "fastspim_NativeSPIMReconstructionCuda.h"
 #include "fmvd_transform.h"
-#include "fmvd_deconvolve_cuda.h"
+#include "fmvd_deconvolve.h"
 #include "fmvd_deconvolve_common.h"
 
 JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
