@@ -1,15 +1,16 @@
+#include "fmvd_transform.h"
+
 #include <windows.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "fmvd_utils.h"
-#include "fmvd_transform_cuda.h"
 
 // Include CUDA runtime and CUFFT
 #include <cuda_runtime.h>
 #include <math_constants.h>
 
+#include "fmvd_utils.h"
 
 static texture<unsigned short, 3, cudaReadModeNormalizedFloat> tex;
 

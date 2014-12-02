@@ -1,5 +1,5 @@
-#ifndef __FMVD_TRANSFORM_CUDA_H__
-#define __FMVD_TRANSFORM_CUDA_H__
+#ifndef FMVD_TRANSFORM_H
+#define FMVD_TRANSFORM_H
 
 void transform_cuda(
 		unsigned short **h_data,
