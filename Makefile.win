@@ -14,7 +14,7 @@ CPP_OBJS = fastspim_NativeSPIMReconstructionCuda.obj \
 	   fmvd_deconvolve_hdd.obj
 
 CU_OBJS  = fmvd_transform.obj \
-	   fmvd_deconvolve_cuda_calls.obj
+	   fmvd_deconvolve_cuda.obj
 
 all: NativeSPIMReconstructionCuda.dll
 

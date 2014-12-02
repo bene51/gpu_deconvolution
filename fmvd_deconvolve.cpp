@@ -9,7 +9,6 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-#include "fmvd_deconvolve_cuda_calls.cuh"
 #include "fmvd_deconvolve_common.h"
 
 

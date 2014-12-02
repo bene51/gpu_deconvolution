@@ -3,7 +3,7 @@
 
 #include <cufft.h>
 #include <stdio.h>
-#include "fmvd_deconvolve_cuda_calls.cuh"
+#include "fmvd_deconvolve_cuda.cuh"
 
 // returns 0 if no more data is available
 typedef int (*datasource_t)(data_t **buffer, int offset);

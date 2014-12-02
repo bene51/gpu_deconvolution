@@ -1,4 +1,5 @@
-#include "fmvd_deconvolve_cuda_calls.cuh"
+#include "fmvd_deconvolve_cuda.cuh"
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
