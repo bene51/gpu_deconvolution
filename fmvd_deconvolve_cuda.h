@@ -1,9 +1,9 @@
 #ifndef __FMVD_DECONVOLVE_CUDA__
 #define __FMVD_DECONVOLVE_CUDA__
 
-#include "convolutionFFT2D_common.h"
 #include <cufft.h>
 #include <stdio.h>
+#include "fmvd_deconvolve_cuda_calls.cuh"
 
 // returns 0 if no more data is available
 typedef int (*datasource_t)(data_t **buffer, int offset);

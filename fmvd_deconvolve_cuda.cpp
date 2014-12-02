@@ -1,22 +1,4 @@
-/*
- * Copyright 1993-2014 NVIDIA Corporation.  All rights reserved.
- *
- * Please refer to the NVIDIA end user license agreement (EULA) associated
- * with this source code for terms and conditions that govern your use of
- * this software. Any use, reproduction, disclosure, or distribution of
- * this software and related documentation outside the terms of the EULA
- * is strictly prohibited.
- *
- */
-
-
-/*
- * This sample demonstrates how 2D convolutions
- * with very large kernel sizes
- * can be efficiently implemented
- * using FFT transformations.
- */
-
+#include "fmvd_deconvolve_cuda.h"
 
 #include <windows.h>
 #include <assert.h>
@@ -24,11 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Include CUDA runtime and CUFFT
 #include <cuda_runtime.h>
 #include <cufft.h>
-#include "convolutionFFT2D_common.h"
-#include "fmvd_deconvolve_cuda.h"
+
+#include "fmvd_deconvolve_cuda_calls.cuh"
 #include "fmvd_deconvolve_common.h"
 
 
@@ -54,7 +35,7 @@ padDataClampToBorderGPU(const struct fmvd_plan_cuda *plan, int v, int stream)
 {
 	int fftOffset	   = stream * plan->fftW  * plan->fftH;
 	int dataOffset	   = stream * plan->dataW * plan->dataH;
-	padDataClampToBorderAndInitialize(
+	padDataClampToBorderAndInitialize16(
 		plan->d_estimate + fftOffset,
 		plan->d_PaddedData[v] + fftOffset,
 		plan->d_Data[v] + dataOffset,
@@ -102,7 +83,7 @@ static void convolve_single_plane(float *h_Data, int dataW, int dataH, const flo
 	// copy the data and pad it
 	checkCudaErrors(cudaMemset(d_PaddedData, 0, paddedsize));
 	checkCudaErrors(cudaMemcpy(d_Data, h_Data, datasize, cudaMemcpyHostToDevice));
-	padDataClampToBorderFloat(d_PaddedData, d_Data, fftH, fftW, dataH, dataW, kernelH, kernelW, 0);
+	padDataClampToBorder32(d_PaddedData, d_Data, fftH, fftW, dataH, dataW, kernelH, kernelW, 0);
 
 	// forward FFT
 	checkCudaErrors(cufftExecR2C(fftPlanFwd, (cufftReal *)d_PaddedKernel, (cufftComplex *)d_KernelSpectrum));
@@ -111,7 +92,7 @@ static void convolve_single_plane(float *h_Data, int dataW, int dataH, const flo
 	checkCudaErrors(cufftExecC2R(fftPlanInv, (cufftComplex *)d_DataSpectrum, (cufftReal *)d_PaddedData));
 
 	// copy result back to host
-	unpadDataFloat(d_Data, d_PaddedData, fftH, fftW, dataH, dataW, 0);
+	unpadData32(d_Data, d_PaddedData, fftH, fftW, dataH, dataW, 0);
 
 	// D2H
 	checkCudaErrors(cudaMemcpy(h_Data, d_Data, datasize, cudaMemcpyDeviceToHost));
@@ -397,16 +378,16 @@ fmvd_deconvolve_planes_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 				checkCudaErrors(cufftExecR2C(fftPlanFwd, (cufftReal *)d_estimate, (cufftComplex *)d_estimateSpectrum));
 				modulateAndNormalize(d_estimateSpectrum, plan->d_KernelSpectrum[v], fftH, fftW, 1, stream);
 				checkCudaErrors(cufftExecC2R(fftPlanInv, (cufftComplex *)d_estimateSpectrum, (cufftReal *)d_tmp));
-				divide(plan->d_PaddedData[v] + fftOffset, d_tmp, d_tmp, fftH, fftW, stream);
+				divide16(plan->d_PaddedData[v] + fftOffset, d_tmp, d_tmp, fftH, fftW, stream);
 
 				checkCudaErrors(cufftExecR2C(fftPlanFwd, (cufftReal *)d_tmp, (cufftComplex *)d_estimateSpectrum));
 				modulateAndNormalize(d_estimateSpectrum, plan->d_KernelHatSpectrum[v], fftH, fftW, 1, stream);
 				checkCudaErrors(cufftExecC2R(fftPlanInv, (cufftComplex *)d_estimateSpectrum, (cufftReal *)d_tmp));
-				mul(d_estimate, d_tmp, plan->d_PaddedWeights[v], d_estimate, fftW, fftH, stream);
+				multiply32(d_estimate, d_tmp, plan->d_PaddedWeights[v], d_estimate, fftW, fftH, stream);
 			}
 		}
 
-		unpadData(plan->d_Data[0] + dataOffset, d_estimate, fftH, fftW, plan->dataH, plan->dataW, stream);
+		unpadData16(plan->d_Data[0] + dataOffset, d_estimate, fftH, fftW, plan->dataH, plan->dataW, stream);
 
 		// D2H
 		checkCudaErrors(cudaMemcpyAsync(
