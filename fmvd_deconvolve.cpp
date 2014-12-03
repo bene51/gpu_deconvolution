@@ -9,28 +9,86 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-#include "fmvd_deconvolve_common.h"
+#include "fmvd_utils.h"
 
 
-#define checkCudaErrors(ans) {gpuAssert((ans), __FILE__, __LINE__); }
-#define checkCufftErrors(ans) {gpuAssert((ans), __FILE__, __LINE__); }
+/*************************
+ * Helper functions.
+ *************************/
 
-////////////////////////////////////////////////////////////////////////////////
-// Helper functions
-////////////////////////////////////////////////////////////////////////////////
-void gpuAssert(unsigned int code, const char *file, int line, bool abort=true)
+//Align a to nearest higher multiple of b
+static int
+iAlignUp(int a, int b)
 {
-	if(code != cudaSuccess) {
-		const char *str = cudaGetErrorString((cudaError_t)code);
-		fprintf(stderr, "GPUAssert: error %d %s %d\n", code, file, line);
-		fprintf(stderr, "%s\n", str);
-		if(abort)
-			exit(code);
+	return (a % b != 0) ? (a - a % b + b) : a;
+}
+
+static int
+snapTransformSize(int dataSize)
+{
+	int hiBit;
+	unsigned int lowPOT, hiPOT;
+
+	dataSize = iAlignUp(dataSize, 16);
+
+	for (hiBit = 31; hiBit >= 0; hiBit--)
+		if (dataSize & (1U << hiBit))
+			break;
+
+	lowPOT = 1U << hiBit;
+
+	if (lowPOT == (unsigned int)dataSize)
+		return dataSize;
+
+	hiPOT = 1U << (hiBit + 1);
+
+	if (hiPOT <= 1024)
+		return hiPOT;
+	else
+		return iAlignUp(dataSize, 512);
+}
+
+static void
+normalize(float *kernel, int len)
+{
+	int i;
+	double sum = 0;
+	float *k = kernel;
+	for(i = 0; i < len; i++) {
+		sum += *k;
+		k++;
+	}
+	k = kernel;
+	for(i = 0; i < len; i++) {
+		*k /= (float)sum;
+		k++;
 	}
 }
 
 static void
-padDataClampToBorderGPU(const struct fmvd_plan_cuda *plan, int v, int stream)
+computeInvertedKernel(const float *kernel, float *out, int kw, int kh)
+{
+	int x, y;
+	for(y = 0; y < kh; y++) {
+		for(x = 0; x < kw; x++) {
+			out[y * kw + x] = kernel[(kh - y - 1) * kw + (kw - x - 1)];
+		}
+	}
+}
+
+static void
+computeExponentialKernel(const float *kernel, float *out, int kw, int kh, int exponent)
+{
+	int i;
+	int wh = kw * kh;
+	for(i = 0; i < wh; i++)
+		out[i] = (float)pow(kernel[i], exponent);
+}
+
+
+
+static void
+padData(const struct fmvd_plan_cuda *plan, int v, int stream)
 {
 	int fftOffset	   = stream * plan->fftW  * plan->fftH;
 	int dataOffset	   = stream * plan->dataW * plan->dataH;
@@ -49,7 +107,8 @@ padDataClampToBorderGPU(const struct fmvd_plan_cuda *plan, int v, int stream)
 	);
 }
 
-static void convolve_single_plane(float *h_Data, int dataW, int dataH, const float *h_Kernel, int kernelW, int kernelH)
+static void
+convolve_single_plane(float *h_Data, int dataW, int dataH, const float *h_Kernel, int kernelW, int kernelH)
 {
 	int fftH = snapTransformSize(dataH + kernelH - 1);
 	int fftW = snapTransformSize(dataW + kernelW - 1);
@@ -97,7 +156,8 @@ static void convolve_single_plane(float *h_Data, int dataW, int dataH, const flo
 	checkCudaErrors(cudaMemcpy(h_Data, d_Data, datasize, cudaMemcpyDeviceToHost));
 }
 
-static float **computeKernel2(float const * const *h_Kernel, int kernelW, int kernelH, int nViews, fmvd_psf_type iteration_type)
+static float **
+computeKernel2(float const * const *h_Kernel, int kernelW, int kernelH, int nViews, fmvd_psf_type iteration_type)
 {
 	int v, w, kernelsize;
 	kernelsize = kernelH * kernelW * sizeof(float);
@@ -164,7 +224,7 @@ static float **computeKernel2(float const * const *h_Kernel, int kernelW, int ke
 }
 
 static void
-prepareKernelsGPU(const struct fmvd_plan_cuda *plan, float const* const* h_Kernel, fmvd_psf_type iteration_type)
+prepareKernels(const struct fmvd_plan_cuda *plan, float **h_Kernel, fmvd_psf_type iteration_type)
 {
 	int v, paddedsize, kernelsize, kernelW, kernelH;
 	float *d_Kernel, *d_PaddedKernel, *d_PaddedKernelHat;
@@ -180,6 +240,9 @@ prepareKernelsGPU(const struct fmvd_plan_cuda *plan, float const* const* h_Kerne
 	checkCudaErrors(cudaMalloc((void **)&d_PaddedKernelHat, paddedsize));
 
 	float **h_Kernel2 = computeKernel2(h_Kernel, kernelW, kernelH, plan->nViews, iteration_type);
+
+	for(v = 0; v < plan->nViews; v++)
+		normalize(h_Kernel[v], kernelW * kernelH);
 
 	for(v = 0; v < plan->nViews; v++) {
 		checkCudaErrors(cudaMemcpy(d_Kernel, h_Kernel[v], kernelsize, cudaMemcpyHostToDevice));
@@ -202,7 +265,7 @@ prepareKernelsGPU(const struct fmvd_plan_cuda *plan, float const* const* h_Kerne
 }
 
 static void
-prepareWeightsGPU(const struct fmvd_plan_cuda *plan, data_t const* const* h_Weights)
+prepareWeights(const struct fmvd_plan_cuda *plan, data_t const* const* h_Weights)
 {
 	int v, paddedsize_data_t, paddedsize_float, datasize;
 	data_t *d_Weights;
@@ -240,12 +303,16 @@ prepareWeightsGPU(const struct fmvd_plan_cuda *plan, data_t const* const* h_Weig
 	checkCudaErrors(cudaFree(d_PaddedWeightSums));
 }
 
+
+/*************************
+ * Public API
+ *************************/
 struct fmvd_plan_cuda *
 fmvd_initialize_cuda(
 		int dataH,
 		int dataW,
 		data_t const* const* h_Weights,
-		float const* const* h_Kernel,
+		float **h_Kernel,
 		int kernelH,
 		int kernelW,
 		fmvd_psf_type iteration_type,
@@ -310,8 +377,8 @@ fmvd_initialize_cuda(
 		checkCudaErrors(cufftSetStream(plan->fftPlanInv[stream], plan->streams[stream]));
 	}
 
-	prepareKernelsGPU(plan, h_Kernel, iteration_type);
-	prepareWeightsGPU(plan, h_Weights);
+	prepareKernels(plan, h_Kernel, iteration_type);
+	prepareWeights(plan, h_Weights);
 	return plan;
 }
 
@@ -349,7 +416,6 @@ fmvd_deconvolve_planes_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 
 		// load from HDD
 		if(z >= plan->nStreams) {
-//			printf("z %d (stream %d): waiting for stream %d\n", z, stream_idx, stream_idx);
 			checkCudaErrors(cudaStreamSynchronize(stream));
 			plan->return_next_plane(plan->h_Data[0] + dataOffset);
 			int has_more_data = plan->get_next_plane(plan->h_Data, dataOffset);
@@ -369,7 +435,7 @@ fmvd_deconvolve_planes_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 		for(v = 0; v < plan->nViews; v++) {
 			data_t *d_PaddedData = plan->d_PaddedData[v] + fftOffset;
 			checkCudaErrors(cudaMemsetAsync(d_PaddedData, 0, paddedsize_data_t, stream));
-			padDataClampToBorderGPU(plan, v, stream_idx);
+			padData(plan, v, stream_idx);
 		}
 
 		for(it = 0; it < iterations; it++) {

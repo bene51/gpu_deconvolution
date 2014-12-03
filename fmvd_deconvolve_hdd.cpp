@@ -1,10 +1,11 @@
 #ifdef _WIN32
 #define _CRT_SECURE_NO_DEPRECATE
 #endif
+
+#include "fmvd_deconvolve.h"
+
 #include <stdio.h>
 #include <stdlib.h>
-#include "fmvd_deconvolve.h"
-#include "fmvd_deconvolve_common.h"
 
 struct iodata {
 	FILE **dataFiles;
@@ -108,9 +109,6 @@ main(int argc, char **argv)
 
 	load(KW, KH, kernel[0], "E:\\SPIM5_Deconvolution\\m6\\cropped\\forplanewisedeconv\\psf3.raw");
 	load(KW, KH, kernel[1], "E:\\SPIM5_Deconvolution\\m6\\cropped\\forplanewisedeconv\\psf5.raw");
-
-	normalize(kernel[0], KW * KH);
-	normalize(kernel[1], KW * KH);
 
 	FILE **dataFiles = (FILE**)malloc(2 * sizeof(FILE *));
 	char path[256];

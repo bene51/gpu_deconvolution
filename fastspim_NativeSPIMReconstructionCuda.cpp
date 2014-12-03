@@ -1,12 +1,13 @@
 #ifdef _WIN32
 #define _CRT_SECURE_NO_DEPRECATE
 #endif
+
+#include "fastspim_NativeSPIMReconstructionCuda.h"
+
 #include <string.h>
 #include <stdlib.h>
-#include "fastspim_NativeSPIMReconstructionCuda.h"
 #include "fmvd_transform.h"
 #include "fmvd_deconvolve.h"
-#include "fmvd_deconvolve_common.h"
 
 JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
 		JNIEnv *env,
@@ -91,7 +92,6 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 		fread(kernel[v], sizeof(float), kernelW * kernelH, f);
 		fclose(f);
 		env->ReleaseStringUTFChars(jpath, path);
-		normalize(kernel[v], kernelW * kernelH);
 	}
 
 	data_t **h_Weights = (data_t **)malloc(nViews * sizeof(data_t *));

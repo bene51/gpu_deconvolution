@@ -10,7 +10,6 @@ NVCC_LINK_FLAGS = --cl-version $(CL_VERSION) --use-local-env --shared -lcufft
 
 CPP_OBJS = fastspim_NativeSPIMReconstructionCuda.obj \
 	   fmvd_deconvolve.obj \
-	   fmvd_deconvolve_common.obj \
 	   fmvd_deconvolve_hdd.obj
 
 CU_OBJS  = fmvd_transform.obj \

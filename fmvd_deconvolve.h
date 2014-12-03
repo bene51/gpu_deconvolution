@@ -42,7 +42,7 @@ struct fmvd_plan_cuda {
 };
 
 struct fmvd_plan_cuda *
-fmvd_initialize_cuda(int dataH, int dataW, data_t const* const* h_Weights, float const* const* h_Kernel, int kernelH, int kernelW, fmvd_psf_type iteration_type, int nViews, int nstreams, datasource_t get_next_plane, datasink_t return_next_plane);
+fmvd_initialize_cuda(int dataH, int dataW, data_t const* const* h_Weights, float **h_Kernel, int kernelH, int kernelW, fmvd_psf_type iteration_type, int nViews, int nstreams, datasource_t get_next_plane, datasink_t return_next_plane);
 
 
 void
