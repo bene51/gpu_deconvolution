@@ -10,10 +10,8 @@
 #include "fmvd_deconvolve.h"
 #include "fmvd_cuda_utils.h"
 
-static void ThrowException(void *env_ptr)
+static void ThrowException(void *env_ptr, const char *message)
 {
-	char *message = "bla";
-	printf("throw an exception\n");
 	JNIEnv *env = (JNIEnv *)env_ptr;
 	jclass cl;
 	cl = env->FindClass("java/lang/RuntimeException");

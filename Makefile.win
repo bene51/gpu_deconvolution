@@ -11,7 +11,8 @@ REDISTRIBUTABLE = NativeSPIMReconstructionCuda.dll
 
 CPP_OBJS = fastspim_NativeSPIMReconstructionCuda.obj \
 	   fmvd_deconvolve.obj \
-	   fmvd_deconvolve_hdd.obj
+	   fmvd_deconvolve_hdd.obj \
+	   fmvd_cuda_utils.obj
 
 CU_OBJS  = fmvd_transform.obj \
 	   fmvd_deconvolve_cuda.obj
