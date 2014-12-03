@@ -1,6 +1,9 @@
 #include "fmvd_transform.h"
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -229,7 +232,10 @@ void transform_cuda(
 
 	// transform the data
 	FILE *out = fopen(outfile, "wb");
-	long start = GetTickCount();
+
+#ifdef _WIN32
+	int start = GetTickCount();
+#endif
 	for(int z = 0; z < td; z++) {
 		streamIdx = z % nStreams;
 		cudaStream_t stream = streams[streamIdx];
@@ -265,8 +271,10 @@ void transform_cuda(
 	}
 
 
-	long end = GetTickCount();
+#ifdef _WIN32
+	int end = GetTickCount();
 	printf("needed %d ms\n", (end - start));
+#endif
 	fclose(out);
 
 	cudaUnbindTexture(tex);

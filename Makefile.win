@@ -1,4 +1,3 @@
-# JAVA_HOME = c:/Program Files/Java/jdk1.7.0_60
 CL_VERSION = 2010
 
 .SUFFIXES: .cpp .obj .cu

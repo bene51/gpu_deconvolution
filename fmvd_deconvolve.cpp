@@ -1,6 +1,5 @@
 #include "fmvd_deconvolve.h"
 
-#include <windows.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +10,9 @@
 
 #include "fmvd_cuda_utils.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 /*************************
  * Helper functions.
@@ -386,7 +388,6 @@ void
 fmvd_deconvolve_planes_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 {
 	int z, v, stream_idx, it, fftH, fftW, paddedsize_float, paddedsize_data_t, datasize;
-	long start, stop;
 
 	fftH = plan->fftH;
 	fftW = plan->fftW;
@@ -399,7 +400,9 @@ fmvd_deconvolve_planes_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 		plan->get_next_plane(plan->h_Data, dataOffset);
 	}
 
-	start = GetTickCount();
+#ifdef _WIN32
+	int start = GetTickCount();
+#endif
 	for(z = 0; ; z++) {
 		stream_idx = z % plan->nStreams;
 		cudaStream_t stream = plan->streams[stream_idx];
@@ -473,8 +476,10 @@ fmvd_deconvolve_planes_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 		stream_idx = (stream_idx + 1) % plan->nStreams;
 	}
 
-	stop = GetTickCount();
+#ifdef _WIN32
+	int stop = GetTickCount();
 	printf("Overall time: %d ms\n", (stop - start));
+#endif
 }
 
 void
