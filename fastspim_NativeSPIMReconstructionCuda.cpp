@@ -10,10 +10,26 @@
 #include "fmvd_deconvolve.h"
 #include "fmvd_cuda_utils.h"
 
+static void ThrowException(void *env_ptr)
+{
+	char *message = "bla";
+	printf("throw an exception\n");
+	JNIEnv *env = (JNIEnv *)env_ptr;
+	jclass cl;
+	cl = env->FindClass("java/lang/RuntimeException");
+	env->ThrowNew(cl, message);
+}
+
+static void setCudaExceptionHandler(JNIEnv *env)
+{
+	setErrorHandler(ThrowException, env);
+}
+
 JNIEXPORT jint JNICALL Java_fastspim_NativeSPIMReconstructionCuda_getNumCudaDevices(
 		JNIEnv *env,
 		jclass)
 {
+	setCudaExceptionHandler(env);
 	return getNumCUDADevices();
 }
 
@@ -23,6 +39,7 @@ JNIEXPORT jstring JNICALL Java_fastspim_NativeSPIMReconstructionCuda_getCudaDevi
 		jint deviceIdx)
 {
 	char name[256];
+	setCudaExceptionHandler(env);
 	getCudaDeviceName(deviceIdx, name);
 	jstring result = env->NewStringUTF(name);
 	return result;
@@ -33,6 +50,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_setCudaDevice(
 		jclass,
 		jint deviceIdx)
 {
+	setCudaExceptionHandler(env);
 	setCudaDevice(deviceIdx);
 }
 
@@ -54,7 +72,6 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
 		jstring maskfile)
 
 {
-	printf("Should transform now, but just testing at the moment\n");
 	int z;
 	int planesize = w * h * sizeof(unsigned short);
 	unsigned short **cdata = (unsigned short **)malloc(d * sizeof(unsigned short *));
@@ -79,6 +96,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
 	if(createTransformedMasks)
 		maskpath = env->GetStringUTFChars(maskfile, NULL);
 
+	setCudaExceptionHandler(env);
 	transform_cuda(cdata, w, h, d, targetW, targetH, targetD, mat, outpath,
 		createTransformedMasks, border, zspacing, maskpath);
 
@@ -151,6 +169,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 	env->ReleaseStringUTFChars(outputfile, path);
 
 	// Do the deconvolution
+	setCudaExceptionHandler(env);
 	fmvd_psf_type iteration_type = (fmvd_psf_type)iterationType;
 	fmvd_deconvolve_files_cuda(dataFiles, resultFile, dataW, dataH, dataD, h_Weights, kernel, kernelH, kernelW, iteration_type, nViews, iterations);
 

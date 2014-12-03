@@ -3,6 +3,23 @@
 
 extern "C" {
 
+static void exit_on_error(void *)
+{
+	printf("exiting... \n");
+	exit(EXIT_FAILURE);
+}
+
+static void (*on_error)(void *) = exit_on_error;
+
+static void *hparam = NULL;
+
+inline void setErrorHandler(void (*handler)(void *), void *param)
+{
+	hparam = param;
+	on_error = handler;
+	printf("set error handler\n");
+}
+
 inline int
 iDivUp(int a, int b)
 {
@@ -17,23 +34,29 @@ __getLastCudaError(const char *errorMessage, const char *file, const int line)
 
 	if (cudaSuccess != err)
 	{
-		fprintf(stderr, "%s(%i) : CUDA error : %s : (%d) %s.\n",
-				file, line, errorMessage, (int)err,
-				cudaGetErrorString(err));
-		exit(EXIT_FAILURE);
+		char message[256];
+		sprintf(message, "Cuda error %d: %s in %s (line %i)",
+				(int)err, cudaGetErrorString(err),
+				file, line);
+		fprintf(stderr, "%s\n", message);
+
+		on_error(hparam);
 	}
 }
 
 #define checkCudaErrors(ans) {__gpuAssert((ans), __FILE__, __LINE__); }
 inline void
-__gpuAssert(unsigned int code, const char *file, int line, bool abort=true)
+__gpuAssert(unsigned int code, const char *file, int line)
 {
 	if(code != cudaSuccess) {
-		const char *str = cudaGetErrorString((cudaError_t)code);
-		fprintf(stderr, "GPUAssert: error %d %s %d\n", code, file, line);
-		fprintf(stderr, "%s\n", str);
-		if(abort)
-			exit(code);
+		char message[256];
+		sprintf(message, "Cuda error %d: %s in %s (line %i)",
+				code, cudaGetErrorString((cudaError_t)code),
+				file, line);
+		fprintf(stderr, "%s\n", message);
+		const char *bla = message;
+
+		on_error(hparam);
 	}
 }
 
