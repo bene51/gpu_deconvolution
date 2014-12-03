@@ -9,7 +9,7 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-#include "fmvd_utils.h"
+#include "fmvd_cuda_utils.h"
 
 
 /*************************

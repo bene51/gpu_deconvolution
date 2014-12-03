@@ -10,7 +10,7 @@
 #include <cuda_runtime.h>
 #include <math_constants.h>
 
-#include "fmvd_utils.h"
+#include "fmvd_cuda_utils.h"
 
 static texture<unsigned short, 3, cudaReadModeNormalizedFloat> tex;
 

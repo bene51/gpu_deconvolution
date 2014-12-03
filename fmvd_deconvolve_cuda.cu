@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "fmvd_utils.h"
+#include "fmvd_cuda_utils.h"
 
 /**
  * Resize the kernel to fftW and fftH, padding it with zeros and
