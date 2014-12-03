@@ -7,6 +7,7 @@ NVCC = nvcc
 INCL = --include-path "$(JAVA_HOME)/include" --include-path "$(JAVA_HOME)/include/win32"
 NVCC_COMPILE_FLAGS = -c -O2 -Xcompiler "/EHsc /W3 /nologo /O2 /Zi /MT" --cl-version $(CL_VERSION) --use-local-env 
 NVCC_LINK_FLAGS = --cl-version $(CL_VERSION) --use-local-env --shared -lcufft
+REDISTRIBUTABLE = NativeSPIMReconstructionCuda.dll
 
 CPP_OBJS = fastspim_NativeSPIMReconstructionCuda.obj \
 	   fmvd_deconvolve.obj \
@@ -15,10 +16,10 @@ CPP_OBJS = fastspim_NativeSPIMReconstructionCuda.obj \
 CU_OBJS  = fmvd_transform.obj \
 	   fmvd_deconvolve_cuda.obj
 
-all: NativeSPIMReconstructionCuda.dll
+all: $(REDISTRIBUTABLE)
 
 clean:
-	del NativeSPIMReconstructionCuda.dll $(CPP_OBJS) $(CU_OBJS)
+	del $(REDISTRIBUTABLE) $(CPP_OBJS) $(CU_OBJS)
 
 .cpp.obj:
 	@echo Building $@ from $<
@@ -28,7 +29,7 @@ clean:
 	@echo Building $@ from $<
 	$(NVCC) $(NVCC_COMPILE_FLAGS) $(INCL) -o $@ $< >nul
 
-NativeSPIMReconstructionCuda.dll: $(CU_OBJS) $(CPP_OBJS)
+$(REDISTRIBUTABLE): $(CU_OBJS) $(CPP_OBJS)
 	@echo linking...
 	$(NVCC) $(NVCC_LINK_FLAGS) -o $@ $** >nul
 
