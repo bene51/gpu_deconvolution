@@ -7,11 +7,21 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/*
- * Class:     fastspim_NativeSPIMReconstructionCuda
- * Method:    transform
- * Signature: ([[SIII[FIIILjava/lang/String;)V
- */
+
+JNIEXPORT jint JNICALL Java_fastspim_NativeSPIMReconstructionCuda_getNumCudaDevices(
+		JNIEnv *env,
+		jclass);
+
+JNIEXPORT jstring JNICALL Java_fastspim_NativeSPIMReconstructionCuda_getCudaDeviceName(
+		JNIEnv *env,
+		jclass,
+		jint deviceIdx);
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_setCudaDevice(
+		JNIEnv *env,
+		jclass,
+		jint deviceIdx);
+
 JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
 		JNIEnv *env,
 		jclass,

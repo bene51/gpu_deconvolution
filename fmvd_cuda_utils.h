@@ -36,6 +36,30 @@ __gpuAssert(unsigned int code, const char *file, int line, bool abort=true)
 			exit(code);
 	}
 }
+
+inline int
+getNumCUDADevices()
+{
+	int count = 0;
+	checkCudaErrors(cudaGetDeviceCount(&count));
+	return count;
+}
+
+inline void
+getCudaDeviceName(int dev, char* name)
+{
+	cudaDeviceProp prop;
+	checkCudaErrors(cudaGetDeviceProperties(&prop, dev));
+	memcpy(name,prop.name,sizeof(char)*256);
+}
+
+inline void
+setCudaDevice(int dev)
+{
+	checkCudaErrors(cudaSetDevice(dev));
+}
+
+
 }
 #endif
 

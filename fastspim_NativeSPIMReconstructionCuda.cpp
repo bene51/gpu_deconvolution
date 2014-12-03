@@ -8,6 +8,33 @@
 #include <stdlib.h>
 #include "fmvd_transform.h"
 #include "fmvd_deconvolve.h"
+#include "fmvd_cuda_utils.h"
+
+JNIEXPORT jint JNICALL Java_fastspim_NativeSPIMReconstructionCuda_getNumCudaDevices(
+		JNIEnv *env,
+		jclass)
+{
+	return getNumCUDADevices();
+}
+
+JNIEXPORT jstring JNICALL Java_fastspim_NativeSPIMReconstructionCuda_getCudaDeviceName(
+		JNIEnv *env,
+		jclass,
+		jint deviceIdx)
+{
+	char name[256];
+	getCudaDeviceName(deviceIdx, name);
+	jstring result = env->NewStringUTF(name);
+	return result;
+}
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_setCudaDevice(
+		JNIEnv *env,
+		jclass,
+		jint deviceIdx)
+{
+	setCudaDevice(deviceIdx);
+}
 
 JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
 		JNIEnv *env,
@@ -25,6 +52,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
 		jint border,
 		jfloat zspacing,
 		jstring maskfile)
+
 {
 	printf("Should transform now, but just testing at the moment\n");
 	int z;
@@ -50,7 +78,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
 	const char *maskpath = NULL;
 	if(createTransformedMasks)
 		maskpath = env->GetStringUTFChars(maskfile, NULL);
-	
+
 	transform_cuda(cdata, w, h, d, targetW, targetH, targetD, mat, outpath,
 		createTransformedMasks, border, zspacing, maskpath);
 
