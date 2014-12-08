@@ -1,7 +1,7 @@
 NVCC := nvcc
 INCL := --include-path "$(JAVA_HOME)/include" --include-path "$(JAVA_HOME)/include/darwin"
 NVCC_COMPILE_FLAGS := -c -O2 -m64 -Xcompiler "-mmacosx-version-min=10.4 -fPIC"
-NVCC_LINK_FLAGS := --shared -m64 -lcufft
+NVCC_LINK_FLAGS := --shared -m64 -lcufft# -Xlinker "-rpath,@executable_path/../.."
 REDISTRIBUTABLE := libNativeSPIMReconstructionCuda.jnilib
 
 all: $(REDISTRIBUTABLE)
