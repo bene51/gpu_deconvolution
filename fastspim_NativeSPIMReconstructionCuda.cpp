@@ -186,3 +186,170 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 	free(dataFiles);
 }
 
+struct interactive {
+	fmvd_plan_cuda *plan;
+	JavaVM *jvm;
+	JNIEnv *env;
+	jmethodID getNextPlaneMethodID;
+	jmethodID returnNextPlaneMethodID;
+	jclass callingClass;
+	int planesize;
+	int nViews;
+};
+
+struct interactive *ia = NULL;
+
+static struct interactive *
+init_ia(fmvd_plan_cuda *plan, JavaVM *jvm, jmethodID get, jmethodID ret, jclass caller, int planesize, int nViews)
+{
+	struct interactive *ia = (struct interactive *)malloc(sizeof(struct interactive));
+	ia->plan = plan;
+	ia->jvm = jvm;
+	ia->getNextPlaneMethodID = get;
+	ia->returnNextPlaneMethodID = ret;
+	ia->callingClass = caller;
+	ia->planesize = planesize;
+	ia->nViews = nViews;
+	return ia;
+}
+
+static void
+free_ia(struct interactive *ia)
+{
+	free(ia);
+}
+
+static int
+get_next_plane(data_t **data, int offset)
+{
+	JNIEnv *env;
+	ia->jvm->AttachCurrentThread((void **)&env, NULL);
+	jobjectArray jarr = (jobjectArray)env->CallStaticObjectMethod(ia->callingClass, ia->getNextPlaneMethodID);
+	if(jarr == NULL) {
+		return 0;
+	}
+	for(int v = 0; v < ia->nViews; v++) {
+		jshortArray view = (jshortArray)env->GetObjectArrayElement(jarr, v);
+		data_t *tgt = (data_t *)env->GetPrimitiveArrayCritical(view, NULL);
+		memcpy(data[v] + offset, tgt, ia->planesize * sizeof(data_t));
+		env->ReleasePrimitiveArrayCritical(view, tgt, JNI_ABORT);
+	}
+	return 1;
+}
+
+static void
+return_next_plane(data_t *data)
+{
+	JNIEnv *env;
+	ia->jvm->AttachCurrentThread((void **)&env, NULL);
+	jshortArray param = env->NewShortArray(ia->planesize);
+	env->SetShortArrayRegion(param, 0, ia->planesize, (jshort *)data);
+	env->CallStaticVoidMethod(ia->callingClass, ia->returnNextPlaneMethodID, param);
+}
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1quit(
+		JNIEnv *env,
+		jclass clazz)
+{
+	if(ia == NULL) {
+		ThrowException(env, "deconvolution already quit");
+		return;
+	}
+	fmvd_destroy_cuda(ia->plan);
+	free_ia(ia);
+	ia = NULL;
+}
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1interactive(
+		JNIEnv *env,
+		jclass clazz,
+		jint iterations)
+{
+	fmvd_deconvolve_planes_cuda(ia->plan, iterations);
+}
+
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1init(
+		JNIEnv *env,
+		jclass clazz,
+		jint dataW,
+		jint dataH,
+		jint dataD,
+		jobjectArray weightfiles,
+		jobjectArray kernelfiles,
+		jint kernelH,
+		jint kernelW,
+		jint iterationType,
+		jint nViews)
+{
+	if(ia != NULL) {
+		ThrowException(env, "deconvolution already initialized");
+		return;
+	}
+
+
+	// Read kernels
+	float **kernel = (float **)malloc(nViews * sizeof(float *));
+	for(int v = 0; v < nViews; v++) {
+		kernel[v] = (float *)fmvd_malloc(kernelW * kernelH * sizeof(float));
+		jstring jpath = (jstring)env->GetObjectArrayElement(kernelfiles, v);
+		const char *path = env->GetStringUTFChars(jpath, NULL);
+		FILE *f = fopen(path, "rb");
+		fread(kernel[v], sizeof(float), kernelW * kernelH, f);
+		fclose(f);
+		env->ReleaseStringUTFChars(jpath, path);
+	}
+
+	// Read weights
+	data_t **h_Weights = (data_t **)malloc(nViews * sizeof(data_t *));
+	int datasize = dataW * dataH;
+	for(int v = 0; v < nViews; v++) {
+		h_Weights[v] = (data_t *)malloc(datasize * sizeof(data_t));
+		jstring path = (jstring)env->GetObjectArrayElement(weightfiles, v);
+		const char *wFile = env->GetStringUTFChars(path, NULL);
+		FILE *f = fopen(wFile, "rb");
+		fread(h_Weights[v], sizeof(data_t), datasize, f);
+		fclose(f);
+		env->ReleaseStringUTFChars(path, wFile);
+	}
+
+
+	// Do the deconvolution
+	setCudaExceptionHandler(env);
+	fmvd_psf_type iteration_type = (fmvd_psf_type)iterationType;
+
+	int nStreams = dataD < 3 ? dataD : 3;
+
+	fmvd_plan_cuda *plan = fmvd_initialize_cuda(
+		dataH, dataW,
+		h_Weights,
+		kernel, kernelH, kernelW, iteration_type,
+		nViews, nStreams,
+		get_next_plane,
+		return_next_plane);
+
+	jmethodID get = env->GetStaticMethodID(clazz, "getNextPlane", "()[[S");
+	if(get == NULL) {
+		printf("error in callback: Method not found\n");
+		return;
+	}
+
+	jmethodID ret = env->GetStaticMethodID(clazz, "returnNextPlane", "([S)V");
+	if(ret == NULL) {
+		printf("error in callback: Method not found\n");
+		return;
+	}
+
+	JavaVM *jvm = NULL;
+	env->GetJavaVM(&jvm);
+
+	ia = init_ia(plan, jvm, get, ret, clazz, dataW * dataH, nViews);
+
+	// Cleanup
+	for(int v = 0; v < nViews; v++) {
+		fmvd_free(kernel[v]);
+		free(h_Weights[v]);
+	}
+	free(kernel);
+	free(h_Weights);
+}
