@@ -451,7 +451,7 @@ fmvd_deconvolve_planes_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 				checkCudaErrors(cufftExecR2C(fftPlanFwd, (cufftReal *)d_tmp, (cufftComplex *)d_estimateSpectrum));
 				modulateAndNormalize(d_estimateSpectrum, plan->d_KernelHatSpectrum[v], fftH, fftW, 1, stream);
 				checkCudaErrors(cufftExecC2R(fftPlanInv, (cufftComplex *)d_estimateSpectrum, (cufftReal *)d_tmp));
-				multiply32(d_estimate, d_tmp, plan->d_PaddedWeights[v], d_estimate, fftW, fftH, stream);
+				multiply32(d_estimate, d_tmp, plan->d_PaddedWeights[v], d_estimate, fftH, fftW, stream);
 			}
 		}
 
