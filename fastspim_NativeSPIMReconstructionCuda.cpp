@@ -127,6 +127,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 		jint iterations)
 {
 	// Read kernels
+	setCudaDevice(0);
 	float **kernel = (float **)malloc(nViews * sizeof(float *));
 	for(int v = 0; v < nViews; v++) {
 		kernel[v] = (float *)fmvd_malloc(kernelW * kernelH * sizeof(float));
