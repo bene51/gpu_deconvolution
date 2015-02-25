@@ -245,7 +245,7 @@ __global__ void padDataClampToBorderAndInitialize16_kernel(
 		d_PaddedData[idx] = v;
 		// float change = v * d_Weights[idx];
 		// d_estimate[idx] += change;
-		d_estimate[idx] += 100;
+		d_estimate[idx] += 10;
 	}
 }
 
