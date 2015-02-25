@@ -12,8 +12,9 @@ NVCC_COMPILE_FLAGS = -c -O2 -Xcompiler "/EHsc /W3 /nologo /O2 /Zi /MT" --cl-vers
 !IF "$(RELEASE)" == "1"
 NVCC_COMPILE_FLAGS = $(RELEASE_NVCC_FLAGS) $(NVCC_COMPILE_FLAGS)
 !ENDIF
-NVCC_LINK_FLAGS = --cl-version $(CL_VERSION) --use-local-env --shared -lcufft
-REDISTRIBUTABLE = NativeSPIMReconstructionCuda.dll
+NVCC_LINK_FLAGS = --cl-version $(CL_VERSION) --use-local-env -lcufft
+REDISTRIBUTABLE = NativeSPIMReconstructionCuda.dll \
+		  NativeSPIMReconstructionCuda.exe
 
 CPP_OBJS = fastspim_NativeSPIMReconstructionCuda.obj \
 	   fmvd_deconvolve.obj \
@@ -36,7 +37,11 @@ clean:
 	@echo Building $@ from $<
 	$(NVCC) $(NVCC_COMPILE_FLAGS) $(INCL) -o $@ $< >nul
 
-$(REDISTRIBUTABLE): $(CU_OBJS) $(CPP_OBJS)
+NativeSPIMReconstructionCuda.dll: $(CU_OBJS) $(CPP_OBJS)
+	@echo linking...
+	$(NVCC) $(NVCC_LINK_FLAGS) --shared -o $@ $** >nul
+
+NativeSPIMReconstructionCuda.exe: $(CU_OBJS) $(CPP_OBJS)
 	@echo linking...
 	$(NVCC) $(NVCC_LINK_FLAGS) -o $@ $** >nul
 
