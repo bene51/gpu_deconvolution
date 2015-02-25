@@ -451,7 +451,7 @@ fmvd_deconvolve_planes_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 				checkCudaErrors(cufftExecR2C(fftPlanFwd, (cufftReal *)d_tmp, (cufftComplex *)d_estimateSpectrum));
 				modulateAndNormalize(d_estimateSpectrum, plan->d_KernelHatSpectrum[v], fftH, fftW, 1, stream);
 				checkCudaErrors(cufftExecC2R(fftPlanInv, (cufftComplex *)d_estimateSpectrum, (cufftReal *)d_tmp));
-				multiply32(d_estimate, d_tmp, plan->d_PaddedWeights[v], d_estimate, fftW, fftH, stream);
+				multiply32(d_estimate, d_tmp, plan->d_PaddedWeights[v], d_estimate, fftH, fftW, stream);
 			}
 		}
 
@@ -468,12 +468,11 @@ fmvd_deconvolve_planes_cuda(const struct fmvd_plan_cuda *plan, int iterations)
 	}
 
 	// save the remaining nStreams planes
-	stream_idx = stream_idx % plan->nStreams;
-	for(z = 0; z < plan->nStreams; z++) {
+	for(z = 0; z < plan->nStreams - 1; z++) {
+		stream_idx = (stream_idx + 1) % plan->nStreams;
 		int dataOffset = stream_idx * plan->dataW * plan->dataH;
 		checkCudaErrors(cudaStreamSynchronize(plan->streams[stream_idx]));
 		plan->return_next_plane(plan->h_Data[0] + dataOffset);
-		stream_idx = (stream_idx + 1) % plan->nStreams;
 	}
 
 #ifdef _WIN32

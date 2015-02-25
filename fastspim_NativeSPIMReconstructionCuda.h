@@ -55,6 +55,30 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 		jint psfType,
 		jint nViews,
 		jint iterations);
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1quit(
+		JNIEnv *env,
+		jclass clazz);
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1interactive(
+		JNIEnv *env,
+		jclass clazz,
+		jint iterations);
+
+
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1init(
+		JNIEnv *env,
+		jclass clazz,
+		jint dataW,
+		jint dataH,
+		jint dataD,
+		jobjectArray weightfiles,
+		jobjectArray kernelfiles,
+		jint kernelH,
+		jint kernelW,
+		jint iterationType,
+		jint nViews);
 #ifdef __cplusplus
 }
 #endif
