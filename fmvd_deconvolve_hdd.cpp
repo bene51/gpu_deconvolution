@@ -19,76 +19,6 @@ struct iodata {
 
 static iodata *io = NULL;
 
-static int
-get_next_plane(data_t **data, int offset)
-{
-	int v;
-	if(io->plane >= io->n_planes)
-		return 0;
-	printf("Reading plane %d\n", io->plane);
-	for(v = 0; v < io->n_views; v++)
-		fread(data[v] + offset, sizeof(data_t), io->datasize, io->dataFiles[v]);
-	io->plane++;
-	return 1;
-}
-
-static void
-return_next_plane(data_t *data)
-{
-	// printf("writing plane %d\n", plane);
-	fwrite(data, sizeof(data_t), io->datasize, io->resultFile);
-}
-
-void
-fmvd_deconvolve_files_cuda(
-		FILE **dataFiles,
-		FILE *resultFile,
-		int dataW,
-		int dataH,
-		int dataD,
-		data_t **h_Weights,
-		float **h_Kernel,
-		int kernelH,
-		int kernelW,
-		fmvd_psf_type iteration_type,
-		int nViews,
-		int iterations)
-{
-	int nStreams = 3;
-	int datasize = dataH * dataW;
-
-	io = (struct iodata *)malloc(sizeof(struct iodata));
-	io->dataFiles = dataFiles;
-	io->resultFile = resultFile;
-	io->datasize = datasize;
-	io->plane = 0;
-	io->n_planes = dataD;
-	io->n_views = nViews;
-
-	fmvd_plan_cuda *plan = fmvd_initialize_cuda(
-		dataH, dataW,
-		h_Weights,
-		h_Kernel, kernelH, kernelW, iteration_type,
-		nViews, nStreams,
-		get_next_plane,
-		return_next_plane);
-
-	fmvd_deconvolve_planes_cuda(plan, iterations);
-
-	fmvd_destroy_cuda(plan);
-	free(io);
-	io = NULL;
-	printf("...shutting down\n");
-}
-
-static void
-load(int w, int h, float *data, const char *path)
-{
-	FILE *f = fopen(path, "rb");
-	fread(data, sizeof(float), w * h, f);
-	fclose(f);
-}
-
 static void print_usage()
 {
 	printf("Usage:\n");
@@ -104,6 +34,7 @@ static void print_usage()
 	printf("                -dd <data depth>\n");
 	printf("                -kw <kernel width>\n");
 	printf("                -kh <kernel height>\n");
+	printf("                [-8bit]\n");
 }
 
 int
@@ -112,6 +43,7 @@ main(int argc, char **argv)
 
 	int i = 1;
 	int nViews, nIterations, w, h, d, kw, kh, iterationType;
+	int eightbit = 0;
 
 	printf("argc = %d\n", argc);
 
@@ -157,6 +89,8 @@ main(int argc, char **argv)
 			for(tmp = 0; tmp < nViews; tmp++)
 				kernelfiles[tmp] = argv[++i];
 		}
+		else if(!strcmp(argv[i], "-8bit"))
+			eightbit = 1;
 	}
 
 	printf("Starting plane-wise deconvolution\n");
@@ -190,16 +124,16 @@ main(int argc, char **argv)
 	}
 
 	// Read weights
-	data_t **weights = (data_t **)malloc(nViews * sizeof(data_t *));
+	float **weights = (float **)malloc(nViews * sizeof(float *));
 	int datasize = w * h;
 	for(int v = 0; v < nViews; v++) {
-		weights[v] = (data_t *)malloc(datasize * sizeof(data_t));
+		weights[v] = (float *)malloc(datasize * sizeof(float));
 		FILE *f = fopen(weightfiles[v], "rb");
 		if(!f) {
 			printf("Could not open %s for reading\n", weightfiles[v]);
 			exit(-1);
 		}
-		fread(weights[v], sizeof(data_t), datasize, f);
+		fread(weights[v], sizeof(float), datasize, f);
 		fclose(f);
 	}
 
@@ -222,7 +156,11 @@ main(int argc, char **argv)
 
 	// Do the deconvolution
 	fmvd_psf_type iteration_type = (fmvd_psf_type)iterationType;
-	fmvd_deconvolve_files_cuda(dataFiles, resultFile, w, h, d, weights, kernel, kh, kw, iteration_type, nViews, nIterations);
+	int bytes = eightbit ? 1 : 2;
+	if(eightbit)
+		fmvd_deconvolve_files_cuda_8(dataFiles, resultFile, w, h, d, weights, kernel, kh, kw, iteration_type, nViews, nIterations);
+	else
+		fmvd_deconvolve_files_cuda_16(dataFiles, resultFile, w, h, d, weights, kernel, kh, kw, iteration_type, nViews, nIterations);
 
 	// Close input and output files
 	for(int v = 0; v < nViews; v++)
@@ -240,4 +178,14 @@ main(int argc, char **argv)
 
 	exit(EXIT_SUCCESS);
 }
+
+
+#define SAMPLE              unsigned short
+#define BITS_PER_SAMPLE     16 
+#include "fmvd_deconvolve_hdd.impl.cpp"
+
+#define SAMPLE              unsigned char
+#define BITS_PER_SAMPLE     8
+#include "fmvd_deconvolve_hdd.impl.cpp"
+
 

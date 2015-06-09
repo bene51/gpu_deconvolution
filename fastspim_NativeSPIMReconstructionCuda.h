@@ -22,7 +22,24 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_setCudaDevice(
 		jclass,
 		jint deviceIdx);
 
-JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform8(
+		JNIEnv *env,
+		jclass,
+		jobjectArray data,
+		jint w,
+		jint h,
+		jint d,
+		jfloatArray invMatrix,
+		jint targetW,
+		jint targetH,
+		jint targetD,
+		jstring outfile,
+		jboolean createTransformedMasks,
+		jint border,
+		jfloat zspacing,
+		jstring maskfile);
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform16(
 		JNIEnv *env,
 		jclass,
 		jobjectArray data,
@@ -40,6 +57,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform(
 		jstring maskfile);
 
 
+
 JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 		JNIEnv *env,
 		jclass,
@@ -54,13 +72,23 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve(
 		jint kernelW,
 		jint psfType,
 		jint nViews,
-		jint iterations);
+		jint iterations,
+		jint bitDepth);
 
-JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1quit(
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1quit8(
 		JNIEnv *env,
 		jclass clazz);
 
-JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1interactive(
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1quit16(
+		JNIEnv *env,
+		jclass clazz);
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1interactive8(
+		JNIEnv *env,
+		jclass clazz,
+		jint iterations);
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1interactive16(
 		JNIEnv *env,
 		jclass clazz,
 		jint iterations);
@@ -78,7 +106,8 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_deconvolve_1in
 		jint kernelH,
 		jint kernelW,
 		jint iterationType,
-		jint nViews);
+		jint nViews,
+		jint bitDepth);
 #ifdef __cplusplus
 }
 #endif
