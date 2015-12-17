@@ -1,11 +1,14 @@
-#ifndef FMVD_CUDA_UTILS_H
-#define FMVD_CUDA_UTILS_H
+#ifndef CUDA_UTILS_H
+#define CUDA_UTILS_H
 
 void
 setErrorHandler(void (*handler)(void *, const char *), void *param);
 
 int
 iDivUp(int a, int b);
+
+int
+snapTransformSize(int dataSize);
 
 #define getLastCudaError(msg)      __getLastCudaError (msg, __FILE__, __LINE__)
 void

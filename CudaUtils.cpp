@@ -2,7 +2,7 @@
 #define _CRT_SECURE_NO_DEPRECATE
 #endif
 
-#include "fmvd_cuda_utils.h"
+#include "CudaUtils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,6 +31,39 @@ iDivUp(int a, int b)
 {
 	return (a % b != 0) ? (a / b + 1) : (a / b);
 }
+
+static int
+iAlignUp(int a, int b)
+{
+	//Align a to nearest higher multiple of b
+	return (a % b != 0) ? (a - a % b + b) : a;
+}
+
+int
+snapTransformSize(int dataSize)
+{
+	int hiBit;
+	unsigned int lowPOT, hiPOT;
+
+	dataSize = iAlignUp(dataSize, 16);
+
+	for (hiBit = 31; hiBit >= 0; hiBit--)
+		if (dataSize & (1U << hiBit))
+			break;
+
+	lowPOT = 1U << hiBit;
+
+	if (lowPOT == (unsigned int)dataSize)
+		return dataSize;
+
+	hiPOT = 1U << (hiBit + 1);
+
+	if (hiPOT <= 1024)
+		return hiPOT;
+	else
+		return iAlignUp(dataSize, 512);
+}
+
 
 void
 __getLastCudaError(const char *errorMessage, const char *file, const int line)

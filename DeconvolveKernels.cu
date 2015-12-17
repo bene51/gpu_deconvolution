@@ -1,18 +1,19 @@
-#include "fmvd_deconvolve_cuda.cuh"
+#include "DeconvolveKernels.cuh"
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "fmvd_cuda_utils.h"
+
+#include "CudaUtils.h"
 
 /**
  * Resize the kernel to fftW and fftH, padding it with zeros and
  * positioning it such that its center is at (0, 0).
  */
 __global__ void padKernel_kernel(
-		float *d_PaddedKernel,
-		float *d_Kernel,
+		float *paddedKernel,
+		float *kernel,
 		int fftH,
 		int fftW,
 		int kernelH,
@@ -33,13 +34,13 @@ __global__ void padKernel_kernel(
 		if (kx < 0)
 			kx += fftW;
 
-		d_PaddedKernel[ky * fftW + kx] = d_Kernel[y * kernelW + x];
+		paddedKernel[ky * fftW + kx] = kernel[y * kernelW + x];
 	}
 }
 
-extern "C" void padKernel(
-		float *d_Dst,
-		float *d_Src,
+void padKernel(
+		float *paddedKernel,
+		float *kernel,
 		int fftH,
 		int fftW,
 		int kernelH,
@@ -47,7 +48,7 @@ extern "C" void padKernel(
 		cudaStream_t stream
 		)
 {
-	assert(d_Src != d_Dst);
+	assert(paddedKernel != kernel);
 	dim3 threads(32, 8);
 	dim3 grid(iDivUp(kernelW, threads.x), iDivUp(kernelH, threads.y));
 
@@ -55,8 +56,8 @@ extern "C" void padKernel(
 	const int kernelX = kernelW / 2;
 
 	padKernel_kernel<<<grid, threads, 0, stream>>>(
-			d_Dst,
-			d_Src,
+			paddedKernel,
+			kernel,
 			fftH,
 			fftW,
 			kernelH,
@@ -69,9 +70,9 @@ extern "C" void padKernel(
 
 
 __global__ void padWeights_kernel(
-		float *d_PaddedWeights,
-		float *d_PaddedWeightSums,
-		float *d_Weights,
+		float *paddedWeights,
+		float *paddedWeightSums,
+		float *weights,
 		int fftH,
 		int fftW,
 		int dataH,
@@ -111,18 +112,18 @@ __global__ void padWeights_kernel(
 		if (x >= borderW)
 			dx = 0;
 
-		v = d_Weights[dy * dataW + dx];
+		v = weights[dy * dataW + dx];
 		idx = y * fftW + x;
 
-		d_PaddedWeights[idx] = v;
-		d_PaddedWeightSums[idx] += v;
+		paddedWeights[idx] = v;
+		paddedWeightSums[idx] += v;
 	}
 }
 
-extern "C" void padWeights(
-		float *d_PaddedWeights,
-		float *d_PaddedWeightSums,
-		float *d_Weights,
+void padWeights(
+		float *paddedWeights,
+		float *paddedWeightSums,
+		float *weights,
 		int fftH,
 		int fftW,
 		int dataH,
@@ -141,9 +142,9 @@ extern "C" void padWeights(
 	const int kernelX = kernelW / 2;
 
 	padWeights_kernel<<<grid, threads, 0, stream>>>(
-			d_PaddedWeights,
-			d_PaddedWeightSums,
-			d_Weights,
+			paddedWeights,
+			paddedWeightSums,
+			weights,
 			fftH,
 			fftW,
 			dataH,
@@ -158,8 +159,8 @@ extern "C" void padWeights(
 
 
 __global__ void normalizeWeights_kernel(
-		float *d_PaddedWeights,
-		float *d_PaddedWeightSums,
+		float *paddedWeights,
+		float *paddedWeightSums,
 		int fftH,
 		int fftW
 		)
@@ -170,15 +171,15 @@ __global__ void normalizeWeights_kernel(
 	if (y < fftH && x < fftW)
 	{
 		int idx = y * fftW + x;
-		float d = d_PaddedWeightSums[idx];
+		float d = paddedWeightSums[idx];
 		if(d > 0)
-			d_PaddedWeights[idx] /= d;
+			paddedWeights[idx] /= d;
 	}
 }
 
-extern "C" void normalizeWeights(
-		float *d_PaddedWeights,
-		float *d_PaddedWeightSums,
+void normalizeWeights(
+		float *paddedWeights,
+		float *paddedWeightSums,
 		int fftH,
 		int fftW,
 		cudaStream_t stream
@@ -190,8 +191,8 @@ extern "C" void normalizeWeights(
 			iDivUp(fftH, threads.y));
 
 	normalizeWeights_kernel<<<grid, threads, 0, stream>>>(
-			d_PaddedWeights,
-			d_PaddedWeightSums,
+			paddedWeights,
+			paddedWeightSums,
 			fftH,
 			fftW
 			);
@@ -199,8 +200,8 @@ extern "C" void normalizeWeights(
 }
 
 __global__ void padDataClampToBorder32_kernel(
-		float *d_PaddedData,
-		float *d_Data,
+		float *paddedData,
+		float *data,
 		int fftH,
 		int fftW,
 		int dataH,
@@ -237,13 +238,13 @@ __global__ void padDataClampToBorder32_kernel(
 		if (x >= borderW)
 			dx = 0;
 
-		d_PaddedData[y * fftW + x] = d_Data[dy * dataW + dx];
+		paddedData[y * fftW + x] = data[dy * dataW + dx];
 	}
 }
 
-extern "C" void padDataClampToBorder32(
-		float *d_PaddedData,
-		float *d_Data,
+void padDataClampToBorder32(
+		float *paddedData,
+		float *data,
 		int fftH,
 		int fftW,
 		int dataH,
@@ -253,7 +254,7 @@ extern "C" void padDataClampToBorder32(
 		cudaStream_t stream
 		)
 {
-	assert(d_PaddedData != d_Data);
+	assert(paddedData != data);
 	dim3 threads(32, 8);
 	dim3 grid(
 			iDivUp(fftW, threads.x),
@@ -263,8 +264,8 @@ extern "C" void padDataClampToBorder32(
 	const int kernelX = kernelW / 2;
 
 	padDataClampToBorder32_kernel<<<grid, threads, 0, stream>>>(
-			d_PaddedData,
-			d_Data,
+			paddedData,
+			data,
 			fftH,
 			fftW,
 			dataH,
@@ -279,8 +280,8 @@ extern "C" void padDataClampToBorder32(
 
 
 __global__ void unpadData32_kernel(
-		float *d_Data,
-		float *d_PaddedData,
+		float *data,
+		float *paddedData,
 		int fftH,
 		int fftW,
 		int dataH,
@@ -291,12 +292,12 @@ __global__ void unpadData32_kernel(
 	const int x = blockDim.x * blockIdx.x + threadIdx.x;
 
 	if (y < dataH && x < dataW)
-		d_Data[y * dataW + x] = d_PaddedData[y * fftW + x];
+		data[y * dataW + x] = paddedData[y * fftW + x];
 }
 
-extern "C" void unpadData32(
-		float *d_Dst,
-		float *d_Src,
+void unpadData32(
+		float *data,
+		float *paddedData,
 		int fftH,
 		int fftW,
 		int dataH,
@@ -310,8 +311,8 @@ extern "C" void unpadData32(
 			iDivUp(dataH, threads.y));
 
 	unpadData32_kernel<<<grid, threads, 0, stream>>>(
-			d_Dst,
-			d_Src,
+			data,
+			paddedData,
 			fftH,
 			fftW,
 			dataH,
@@ -331,8 +332,8 @@ inline __device__ void mulAndScale(fComplex &a, const fComplex &b, const float &
 }
 
 __global__ void modulateAndNormalize_kernel(
-		fComplex *d_Dst,
-		fComplex *d_Src,
+		fComplex *dst,
+		fComplex *src,
 		int dataSize,
 		float c
 		)
@@ -342,17 +343,17 @@ __global__ void modulateAndNormalize_kernel(
 	if (i >= dataSize)
 		return;
 
-	fComplex a = d_Src[i];
-	fComplex b = d_Dst[i];
+	fComplex a = src[i];
+	fComplex b = dst[i];
 
 	mulAndScale(a, b, c);
 
-	d_Dst[i] = a;
+	dst[i] = a;
 }
 
-extern "C" void modulateAndNormalize(
-		fComplex *d_Dst,
-		fComplex *d_Src,
+void modulateAndNormalize(
+		fComplex *dst,
+		fComplex *src,
 		int fftH,
 		int fftW,
 		int padding,
@@ -363,8 +364,8 @@ extern "C" void modulateAndNormalize(
 	const int dataSize = fftH * (fftW / 2 + padding);
 
 	modulateAndNormalize_kernel<<<iDivUp(dataSize, 256), 256, 0, stream>>>(
-			d_Dst,
-			d_Src,
+			dst,
+			src,
 			dataSize,
 			1.0f / (float)(fftW *fftH)
 			);
@@ -372,10 +373,10 @@ extern "C" void modulateAndNormalize(
 }
 
 __global__ void multiply32_kernel(
-		float *d_a,
-		float *d_b,
+		float *a,
+		float *b,
 		float *weights,
-		float *d_dest,
+		float *dest,
 		int dataSize
 		)
 {
@@ -384,18 +385,18 @@ __global__ void multiply32_kernel(
 	if (i >= dataSize)
 		return;
 
-	float target = d_a[i] * d_b[i];
-	float change = target - d_dest[i];
+	float target = a[i] * b[i];
+	float change = target - dest[i];
 	float weight = weights[i];
 	change *= weight;
-	d_dest[i] += change;
+	dest[i] += change;
 }
 
-extern "C" void multiply32(
-		float *d_a,
-		float *d_b,
-		float *d_weights,
-		float *d_dest,
+void multiply32(
+		float *a,
+		float *b,
+		float *weights,
+		float *dest,
 		int fftH,
 		int fftW,
 		cudaStream_t stream
@@ -404,20 +405,218 @@ extern "C" void multiply32(
 	const int dataSize = fftH * fftW;
 
 	multiply32_kernel<<<iDivUp(dataSize, 256), 256, 0, stream>>>(
-			d_a,
-			d_b,
-			d_weights,
-			d_dest,
+			a,
+			b,
+			weights,
+			dest,
 			dataSize
 			);
 	getLastCudaError("multiply32_kernel<<<>>> execution failed\n");
 }
 
-#define SAMPLE              unsigned short
-#define BITS_PER_SAMPLE     16 
-#include "fmvd_deconvolve_cuda.impl.cu"
+template<typename T>
+__global__ void
+padDataClampToBorderAndInitialize_kernel(
+		float *estimate,
+		T *paddedData,
+		T *data,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		int kernelH,
+		int kernelW,
+		int kernelY,
+		int kernelX
+		)
+{
+	const int y = blockDim.y * blockIdx.y + threadIdx.y;
+	const int x = blockDim.x * blockIdx.x + threadIdx.x;
+	const int borderH = dataH + kernelY;
+	const int borderW = dataW + kernelX;
 
-#define SAMPLE              unsigned char
-#define BITS_PER_SAMPLE     8
-#include "fmvd_deconvolve_cuda.impl.cu"
+	if (y < fftH && x < fftW) {
+		int dy, dx, idx;
+		T v;
+
+		if (y < dataH)
+			dy = y;
+
+		if (x < dataW)
+			dx = x;
+
+		if (y >= dataH && y < borderH)
+			dy = dataH - 1;
+
+		if (x >= dataW && x < borderW)
+			dx = dataW - 1;
+
+		if (y >= borderH)
+			dy = 0;
+
+		if (x >= borderW)
+			dx = 0;
+
+		v = data[dy * dataW + dx];
+		idx = y * fftW + x;
+		paddedData[idx] = v;
+		estimate[idx] += 10;
+	}
+}
+
+template<typename T>
+void
+padDataClampToBorderAndInitialize(
+		float *estimate,
+		T *paddedData,
+		T *data,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		int kernelW,
+		int kernelH,
+		cudaStream_t stream
+		)
+{
+	assert(data != paddedData);
+	dim3 threads(32, 8);
+	dim3 grid(
+			iDivUp(fftW, threads.x),
+			iDivUp(fftH, threads.y));
+
+	const int kernelY = kernelH / 2;
+	const int kernelX = kernelW / 2;
+
+	padDataClampToBorderAndInitialize_kernel<<<grid, threads, 0, stream>>>(
+			estimate,
+			paddedData,
+			data,
+			fftH,
+			fftW,
+			dataH,
+			dataW,
+			kernelH,
+			kernelW,
+			kernelY,
+			kernelX
+			);
+	getLastCudaError("padDataClampToBorderAndInitialize_kernel<<<>>> execution failed\n");
+}
+
+template<typename T>
+__global__ void
+unpadData_kernel(
+		T *data,
+		float *paddedData,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		T max
+		)
+{
+	const int y = blockDim.y * blockIdx.y + threadIdx.y;
+	const int x = blockDim.x * blockIdx.x + threadIdx.x;
+
+	// TODO round
+	if (y < dataH && x < dataW) {
+		float v = paddedData[y * fftW + x];
+		if(v > max)
+			v = max;
+		data[y * dataW + x] = (T)v;
+	}
+}
+
+template<typename T>
+void
+unpadData(
+		T *data,
+		float *paddedData,
+		int fftH,
+		int fftW,
+		int dataH,
+		int dataW,
+		cudaStream_t stream
+		)
+{
+	dim3 threads(32, 8);
+	dim3 grid(
+		iDivUp(dataW, threads.x),
+		iDivUp(dataH, threads.y));
+	T max = (1 << (sizeof(T) * 8)) - 1;
+
+	unpadData_kernel<<<grid, threads, 0, stream>>>(
+			data,
+			paddedData,
+			fftH,
+			fftW,
+			dataH,
+			dataW,
+			max
+			);
+	getLastCudaError("unpadData_kernel<<<>>> execution failed\n");
+}
+
+template<typename T>
+__global__ void
+divide_kernel(
+		T *a,
+		float *b,
+		float *dest,
+		int dataSize
+		)
+{
+	const int i = blockDim.x * blockIdx.x + threadIdx.x;
+	float q;
+
+	if (i >= dataSize)
+		return;
+
+	q = b[i];
+	if(q > 1)
+		dest[i] = a[i] / q;
+}
+
+template<typename T>
+void
+divide(
+	T *a,
+	float *b,
+	float *dest,
+	int fftH,
+	int fftW,
+	cudaStream_t stream
+	)
+{
+	const int dataSize = fftH * fftW;
+
+	divide_kernel<<<iDivUp(dataSize, 256), 256, 0, stream>>>(
+			a,
+			b,
+			dest,
+			dataSize
+			);
+	getLastCudaError("divide_kernel<<<>>> execution failed\n");
+}
+
+// explicit template instantiation
+template void
+padDataClampToBorderAndInitialize(
+		float *, unsigned short *, unsigned short *,
+		int, int, int, int, int, int, cudaStream_t);
+template void
+padDataClampToBorderAndInitialize(
+		float *, unsigned char *, unsigned char *,
+		int, int, int, int, int, int, cudaStream_t);
+
+template void
+unpadData(unsigned short *, float *, int, int, int, int, cudaStream_t);
+template void
+unpadData(unsigned char *, float *, int, int, int, int, cudaStream_t);
+
+template void
+divide(unsigned short *, float *, float *, int, int, cudaStream_t);
+template void
+divide(unsigned char *, float *, float *, int, int, cudaStream_t);
 
