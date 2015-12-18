@@ -43,6 +43,6 @@ $(CU_OBJS) : %.obj : %.cu
 libNativeSPIMReconstructionCuda.so : $(CPP_OBJS) $(CU_OBJS)
 	$(NVCC) $(NVCC_LINK_FLAGS) --shared $^ -o $@
 
-NativeSPIMReconstructionCuda : $(CPP_OBJS) $(CU_OBJ)
+NativeSPIMReconstructionCuda : $(CPP_OBJS) $(CU_OBJS)
 	$(NVCC) $(NVCC_LINK_FLAGS) $^ -o $@
 
