@@ -40,7 +40,7 @@ $(CPP_OBJS) : %.obj : %.cpp
 $(CU_OBJS) : %.obj : %.cu
 	$(NVCC) $(NVCC_COMPILE_FLAGS) $(INCL) -o $@ $<
 
-libNativeSPIMReconstructionCuda : $(CPP_OBJS) $(CU_OBJS)
+libNativeSPIMReconstructionCuda.so : $(CPP_OBJS) $(CU_OBJS)
 	$(NVCC) $(NVCC_LINK_FLAGS) --shared $^ -o $@
 
 NativeSPIMReconstructionCuda : $(CPP_OBJS) $(CU_OBJ)
