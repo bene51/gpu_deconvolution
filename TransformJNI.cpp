@@ -28,6 +28,7 @@ TransformJNI<T>::initPlane(
 }
 
 // explicit specification of initPlane for 8-bit data
+template<>
 void
 TransformJNI<unsigned char>::initPlane(
 		JNIEnv *env,
@@ -44,6 +45,7 @@ TransformJNI<unsigned char>::initPlane(
 }
 
 // explicit specification of initPlane for 16-bit data
+template<>
 void
 TransformJNI<unsigned short>::initPlane(
 		JNIEnv *env,
@@ -68,6 +70,7 @@ TransformJNI<T>::deletePlane(JNIEnv *env, int z)
 }
 
 // explicit specification of deletePlane for 8-bit data
+template<>
 void
 TransformJNI<unsigned char>::deletePlane(JNIEnv *env, int z)
 {
@@ -78,6 +81,7 @@ TransformJNI<unsigned char>::deletePlane(JNIEnv *env, int z)
 }
 
 // explicit specification of deletePlane for 16-bit data
+template<>
 void
 TransformJNI<unsigned short>::deletePlane(JNIEnv *env, int z)
 {
