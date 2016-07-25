@@ -22,6 +22,19 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_setCudaDevice(
 		jclass,
 		jint deviceIdx);
 
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform16Interactive(
+		JNIEnv *env,
+		jclass,
+		jobjectArray data,
+		jint w,
+		jint h,
+		jint d,
+		jfloatArray invMatrix,
+		jint targetW,
+		jint targetH,
+		jint targetD,
+		jobject callback);
+
 JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform8(
 		JNIEnv *env,
 		jclass,

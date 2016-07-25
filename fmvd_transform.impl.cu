@@ -84,6 +84,7 @@ MAKE_NAME(transform_cuda)(
 		int th,
 		int td,
 		float *h_inverse,
+		MAKE_NAME(return_plane) callback,
 		const char *outfile,
 		int createTransformedMasks,
 		int border,
@@ -169,7 +170,9 @@ MAKE_NAME(transform_cuda)(
 	}
 
 	// transform the data
-	FILE *out = fopen(outfile, "wb");
+	FILE *out = NULL;
+	if(outfile != NULL)
+		out = fopen(outfile, "wb");
 
 #ifdef _WIN32
 	int start = GetTickCount();
@@ -188,7 +191,10 @@ MAKE_NAME(transform_cuda)(
 					       	cudaMemcpyDeviceToHost,
 					       	stream));
 			checkCudaErrors(cudaStreamSynchronize(stream));
-			fwrite(h_transformed, sizeof(SAMPLE), tw * th, out);
+			if(callback != NULL)
+				callback(h_transformed);
+			else
+				fwrite(h_transformed, sizeof(SAMPLE), tw * th, out);
 		}
 
 		// launch the kernel
@@ -204,7 +210,10 @@ MAKE_NAME(transform_cuda)(
 		checkCudaErrors(cudaMemcpyAsync(h_transformed, d_trans,
 				plane_size, cudaMemcpyDeviceToHost, stream));
 		checkCudaErrors(cudaStreamSynchronize(stream));
-		fwrite(h_transformed, sizeof(SAMPLE), tw * th, out);
+		if(callback != NULL)
+			callback(h_transformed);
+		else
+			fwrite(h_transformed, sizeof(SAMPLE), tw * th, out);
 	}
 
 
@@ -212,7 +221,8 @@ MAKE_NAME(transform_cuda)(
 	int end = GetTickCount();
 	printf("needed %d ms\n", (end - start));
 #endif
-	fclose(out);
+	if(out != NULL)
+		fclose(out);
 
 	cudaUnbindTexture(MAKE_NAME(tex));
 	cudaFreeArray(d_data);

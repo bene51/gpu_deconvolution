@@ -52,6 +52,157 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_setCudaDevice(
 	setCudaDevice(deviceIdx);
 }
 
+struct interactive_transform {
+	JavaVM *jvm;
+	jmethodID receivePlaneMethodID;
+	jobject callback;
+	int planesize;
+};
+
+struct interactive_transform *ia_transform = NULL;
+
+void
+transform_return_next_plane_16(unsigned short *data)
+{
+	JNIEnv *env;
+	ia_transform->jvm->AttachCurrentThread((void **)&env, NULL);
+	jshortArray param = env->NewShortArray(ia_transform->planesize);
+	env->SetShortArrayRegion(param, 0, ia_transform->planesize, (jshort *)data);
+	env->CallVoidMethod(ia_transform->callback, ia_transform->receivePlaneMethodID, param);
+}
+
+void
+transform_return_next_plane_8(unsigned char *data)
+{
+	JNIEnv *env;
+	ia_transform->jvm->AttachCurrentThread((void **)&env, NULL);
+	jbyteArray param = env->NewByteArray(ia_transform->planesize);
+	env->SetByteArrayRegion(param, 0, ia_transform->planesize, (jbyte *)data);
+	env->CallVoidMethod(ia_transform->callback, ia_transform->receivePlaneMethodID, param);
+}
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform16Interactive(
+		JNIEnv *env,
+		jclass,
+		jobjectArray data,
+		jint w,
+		jint h,
+		jint d,
+		jfloatArray invMatrix,
+		jint targetW,
+		jint targetH,
+		jint targetD,
+		jobject callback)
+{
+	int z;
+	int planesize = w * h * sizeof(unsigned short);
+	unsigned short **cdata = (unsigned short **)malloc(d * sizeof(unsigned short *));
+	jshortArray *jdata = (jshortArray *)malloc(d * sizeof(jshortArray));
+	if(!cdata) {
+		printf("not enough memory\n");
+		return;
+	}
+	for(z = 0; z < d; z++) {
+		jdata[z] = (jshortArray)env->GetObjectArrayElement(data, z);
+		cdata[z] = (unsigned short *)env->GetShortArrayElements(jdata[z], NULL);
+		if(!cdata[z]) {
+			printf("not enough memory\n");
+			return;
+		}
+	}
+
+	float *mat = (float *)env->GetFloatArrayElements(invMatrix, NULL);
+
+	setCudaExceptionHandler(env);
+
+	// setup callback
+	JavaVM *jvm = NULL;
+	env->GetJavaVM(&jvm);
+	jclass cls = env->GetObjectClass(callback);
+	jmethodID mid = env->GetMethodID(cls, "receivePlane", "(Ljava/lang/Object;)V");
+	if(mid == 0) {
+		printf("Could not find method\n");
+		return;
+	}
+
+	ia_transform = (struct interactive_transform *)malloc(sizeof(struct interactive_transform));
+	ia_transform->jvm = jvm;
+	ia_transform->receivePlaneMethodID = mid;
+	ia_transform->callback = callback;
+	ia_transform->planesize = targetW * targetH;
+
+	transform_cuda_16(cdata, w, h, d, targetW, targetH, targetD, mat, transform_return_next_plane_16,
+		NULL, false, 0, 0, NULL);
+
+	for(z = 0; z < d; z++)
+		env->ReleaseShortArrayElements(jdata[z], (jshort *)cdata[z], JNI_ABORT);
+
+	env->ReleaseFloatArrayElements(invMatrix, mat, JNI_ABORT);
+
+	free(cdata);
+	free(jdata);
+}
+
+JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform8Interactive(
+		JNIEnv *env,
+		jclass,
+		jobjectArray data,
+		jint w,
+		jint h,
+		jint d,
+		jfloatArray invMatrix,
+		jint targetW,
+		jint targetH,
+		jint targetD,
+		jobject callback)
+{
+	int z;
+	int planesize = w * h * sizeof(unsigned char);
+	unsigned char **cdata = (unsigned char **)malloc(d * sizeof(unsigned char *));
+	jbyteArray *jdata = (jbyteArray *)malloc(d * sizeof(jbyteArray));
+	if(!cdata) {
+		printf("not enough memory\n");
+		return;
+	}
+	for(z = 0; z < d; z++) {
+		jdata[z] = (jbyteArray)env->GetObjectArrayElement(data, z);
+		cdata[z] = (unsigned char *)env->GetByteArrayElements(jdata[z], NULL);
+		if(!cdata[z]) {
+			printf("not enough memory\n");
+			return;
+		}
+	}
+
+	float *mat = (float *)env->GetFloatArrayElements(invMatrix, NULL);
+
+	setCudaExceptionHandler(env);
+
+	// setup callback
+	JavaVM *jvm = NULL;
+	env->GetJavaVM(&jvm);
+	jclass cls = env->GetObjectClass(callback);
+	jmethodID mid = env->GetMethodID(cls, "receivePlane", "()Ljava/lang/Object;");
+	if(mid == 0)
+		printf("Could not find method\n");
+
+	ia_transform = (struct interactive_transform *)malloc(sizeof(struct interactive_transform));
+	ia_transform->jvm = jvm;
+	ia_transform->receivePlaneMethodID = mid;
+	ia_transform->callback = callback;
+	ia_transform->planesize = targetW * targetH;
+
+	transform_cuda_8(cdata, w, h, d, targetW, targetH, targetD, mat, transform_return_next_plane_8,
+		NULL, false, 0, 0, NULL);
+
+	for(z = 0; z < d; z++)
+		env->ReleaseByteArrayElements(jdata[z], (jbyte *)cdata[z], JNI_ABORT);
+
+	env->ReleaseFloatArrayElements(invMatrix, mat, JNI_ABORT);
+
+	free(cdata);
+	free(jdata);
+}
+
 JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform16(
 		JNIEnv *env,
 		jclass,
@@ -95,7 +246,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform16(
 		maskpath = env->GetStringUTFChars(maskfile, NULL);
 
 	setCudaExceptionHandler(env);
-	transform_cuda_16(cdata, w, h, d, targetW, targetH, targetD, mat, outpath,
+	transform_cuda_16(cdata, w, h, d, targetW, targetH, targetD, mat, NULL, outpath,
 		createTransformedMasks, border, zspacing, maskpath);
 
 	for(z = 0; z < d; z++)
@@ -153,7 +304,7 @@ JNIEXPORT void JNICALL Java_fastspim_NativeSPIMReconstructionCuda_transform8(
 		maskpath = env->GetStringUTFChars(maskfile, NULL);
 
 	setCudaExceptionHandler(env);
-	transform_cuda_8(cdata, w, h, d, targetW, targetH, targetD, mat, outpath,
+	transform_cuda_8(cdata, w, h, d, targetW, targetH, targetD, mat, NULL, outpath,
 		createTransformedMasks, border, zspacing, maskpath);
 
 	for(z = 0; z < d; z++)
